@@ -1,0 +1,2263 @@
+import { GoogleGenAI } from "@google/genai";
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+import Database from "better-sqlite3";
+import { SignJWT, jwtVerify } from "jose";
+import bcrypt from "bcryptjs";
+import multer from "multer";
+import fs from "fs";
+import { WebSocketServer, WebSocket } from "ws";
+import http from "http";
+import pg from "pg";
+import twilio from "twilio";
+import admin from "firebase-admin";
+import { AsyncLocalStorage } from 'async_hooks';
+const { Pool } = pg;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, "public", "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Multer Config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+const upload = multer({ storage });
+
+// Database Initialization
+const isPostgres = !!(process.env.SUPABASE_URL || process.env.DATABASE_URL);
+let sqliteDb: any;
+let pool: any;
+
+if (isPostgres) {
+  console.log("Using PostgreSQL database");
+  pool = new Pool({
+    connectionString: process.env.SUPABASE_URL || process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+} else {
+  console.log("Using SQLite database");
+  sqliteDb = new Database("smartstock.db");
+  sqliteDb.pragma('foreign_keys = ON');
+}
+
+const transactionStorage = new AsyncLocalStorage<any>();
+
+const db = {
+  get: async (sql: string, ...params: any[]) => {
+    const actualParams = (params.length === 1 && Array.isArray(params[0])) ? params[0] : params;
+    const client = transactionStorage.getStore();
+    
+    if (isPostgres) {
+      let count = 0;
+      const pgSql = sql.replace(/\?/g, () => `$${++count}`);
+      try {
+        const res = await (client || pool).query(pgSql, actualParams.map(p => p === undefined ? null : p));
+        return res.rows[0];
+      } catch (err: any) {
+        console.error("Postgres Get Error:", { sql: pgSql, params: actualParams, error: err.message });
+        throw err;
+      }
+    } else {
+      if (!sqliteDb) throw new Error("SQLite database not initialized");
+      return sqliteDb.prepare(sql).get(...actualParams);
+    }
+  },
+  all: async (sql: string, ...params: any[]) => {
+    const actualParams = (params.length === 1 && Array.isArray(params[0])) ? params[0] : params;
+    const client = transactionStorage.getStore();
+
+    if (isPostgres) {
+      let count = 0;
+      const pgSql = sql.replace(/\?/g, () => `$${++count}`);
+      try {
+        const res = await (client || pool).query(pgSql, actualParams.map(p => p === undefined ? null : p));
+        return res.rows;
+      } catch (err: any) {
+        console.error("Postgres All Error:", { sql: pgSql, params: actualParams, error: err.message });
+        throw err;
+      }
+    } else {
+      if (!sqliteDb) throw new Error("SQLite database not initialized");
+      return sqliteDb.prepare(sql).all(...actualParams);
+    }
+  },
+  run: async (sql: string, ...params: any[]) => {
+    const actualParams = (params.length === 1 && Array.isArray(params[0])) ? params[0] : params;
+    const client = transactionStorage.getStore();
+
+    if (isPostgres) {
+      let count = 0;
+      let pgSql = sql.replace(/\?/g, () => `$${++count}`);
+      if (pgSql.trim().toUpperCase().startsWith("INSERT") && !pgSql.toUpperCase().includes("RETURNING")) {
+        pgSql += " RETURNING *";
+      }
+      try {
+        return await (client || pool).query(pgSql, actualParams.map(p => p === undefined ? null : p));
+      } catch (err: any) {
+        if (!err.message.includes("unique constraint") && !err.message.includes("UNIQUE constraint")) {
+          console.error("Postgres Query Error:", { sql: pgSql, params: actualParams, error: err.message });
+        }
+        throw err;
+      }
+    } else {
+      if (!sqliteDb) throw new Error("SQLite database not initialized");
+      return sqliteDb.prepare(sql).run(...actualParams);
+    }
+  },
+  exec: async (sql: string) => {
+    const client = transactionStorage.getStore();
+    if (isPostgres) {
+      return await (client || pool).query(sql);
+    } else {
+      return sqliteDb.exec(sql);
+    }
+  },
+  transaction: async (fn: () => Promise<void>) => {
+    if (isPostgres) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await transactionStorage.run(client, async () => {
+          await fn();
+        });
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    } else {
+      sqliteDb.exec('BEGIN');
+      try {
+        await fn();
+        sqliteDb.exec('COMMIT');
+      } catch (e) {
+        sqliteDb.exec('ROLLBACK');
+        throw e;
+      }
+    }
+  }
+};
+
+// Initialize Database Tables
+const initDb = async () => {
+  const schema = `
+    CREATE TABLE IF NOT EXISTS shops (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      name TEXT NOT NULL,
+      plan TEXT DEFAULT 'free',
+      logo_url TEXT,
+      theme TEXT DEFAULT 'light',
+      language TEXT DEFAULT 'fr',
+      currency TEXT DEFAULT 'FCFA',
+      receipt_footer TEXT,
+      show_tax INTEGER DEFAULT 0,
+      sms_enabled INTEGER DEFAULT 0,
+      whatsapp_enabled INTEGER DEFAULT 0,
+      notification_template TEXT,
+      status TEXT DEFAULT 'active',
+      is_signaled INTEGER DEFAULT 0,
+      subscription_expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
+      has_ai_features INTEGER DEFAULT 0,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'employee',
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Ensure shop_id can be NULL for global admins in Postgres
+    ${isPostgres ? 'ALTER TABLE users ALTER COLUMN shop_id DROP NOT NULL;' : ''}
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      name TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      barcode TEXT,
+      image_url TEXT,
+      purchase_price REAL NOT NULL,
+      sale_price REAL NOT NULL,
+      quantity INTEGER DEFAULT 0,
+      min_quantity INTEGER DEFAULT 5,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS customers (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      total_debt REAL DEFAULT 0,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sales (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      total_amount REAL NOT NULL,
+      total_profit REAL NOT NULL,
+      tax_amount REAL DEFAULT 0,
+      discount_amount REAL DEFAULT 0,
+      payment_method TEXT DEFAULT 'cash',
+      payment_status TEXT DEFAULT 'paid',
+      amount_paid REAL DEFAULT 0,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_payments (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      amount REAL NOT NULL,
+      payment_method TEXT DEFAULT 'cash',
+      notes TEXT,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sale_items (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      unit_profit REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS subscription_requests (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan TEXT NOT NULL,
+      payment_method TEXT NOT NULL,
+      phone_number TEXT,
+      transaction_ref TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS expenses (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT NOT NULL,
+      description TEXT,
+      date ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      contact_name TEXT,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS broadcasts (
+      id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      type TEXT DEFAULT 'SYSTEM',
+      target_shop_id INTEGER REFERENCES shops(id) ON DELETE SET NULL,
+      created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+  
+  await db.exec(schema);
+
+  // Migration for new columns
+  try {
+    await db.exec(`ALTER TABLE shops ADD COLUMN subscription_expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'}`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE shops ADD COLUMN has_ai_features INTEGER DEFAULT 0`);
+  } catch (e) {}
+
+  // Migrations
+  const addColumnIfNotExists = async (table: string, column: string, type: string) => {
+    if (isPostgres) {
+      try {
+        // Check if column exists
+        const checkSql = `
+          SELECT 1 
+          FROM information_schema.columns 
+          WHERE table_name = $1 AND column_name = $2 AND table_schema = 'public'
+        `;
+        const res = await pool.query(checkSql, [table, column]);
+        if (res.rowCount === 0) {
+          await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+          console.log(`Added column ${column} to ${table}`);
+        }
+      } catch (e: any) {
+        console.error(`Error adding column ${column} to ${table}:`, e.message);
+      }
+    } else {
+      try {
+        await db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      } catch (e) {}
+    }
+  };
+
+  await addColumnIfNotExists("shops", "show_tax", "INTEGER DEFAULT 0");
+  await addColumnIfNotExists("shops", "sms_enabled", "INTEGER DEFAULT 0");
+  await addColumnIfNotExists("shops", "whatsapp_enabled", "INTEGER DEFAULT 0");
+  await addColumnIfNotExists("shops", "notification_template", "TEXT");
+  await addColumnIfNotExists("shops", "status", "TEXT DEFAULT 'active'");
+  await addColumnIfNotExists("shops", "is_signaled", "INTEGER DEFAULT 0");
+  await addColumnIfNotExists("sales", "discount_amount", "REAL DEFAULT 0");
+  await addColumnIfNotExists("products", "category_id", "INTEGER REFERENCES categories(id) ON DELETE SET NULL");
+  await addColumnIfNotExists("products", "barcode", "TEXT");
+  await addColumnIfNotExists("products", "image_url", "TEXT");
+  await addColumnIfNotExists("products", "min_quantity", "INTEGER DEFAULT 5");
+  await addColumnIfNotExists("products", "supplier_id", "INTEGER REFERENCES suppliers(id) ON DELETE SET NULL");
+  await addColumnIfNotExists("sales", "total_profit", "REAL DEFAULT 0");
+  await addColumnIfNotExists("sales", "tax_amount", "REAL DEFAULT 0");
+  await addColumnIfNotExists("sale_items", "unit_profit", "REAL DEFAULT 0");
+  await addColumnIfNotExists("sales", "user_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE");
+  await addColumnIfNotExists("sales", "customer_id", "INTEGER REFERENCES customers(id) ON DELETE SET NULL");
+  await addColumnIfNotExists("sales", "payment_method", "TEXT DEFAULT 'cash'");
+  await addColumnIfNotExists("sales", "amount_paid", "REAL DEFAULT 0");
+  await addColumnIfNotExists("sales", "payment_status", "TEXT DEFAULT 'paid'");
+  await addColumnIfNotExists("customers", "total_debt", "REAL DEFAULT 0");
+  await addColumnIfNotExists("customers", "phone", "TEXT");
+  await addColumnIfNotExists("customers", "email", "TEXT");
+  await addColumnIfNotExists("customers", "address", "TEXT");
+
+  // Ensure baye@gmail.com is admin and has no shop_id (global admin)
+  try {
+    // Make sure shop_id can be NULL for global admins
+    if (isPostgres) {
+      try {
+        await db.exec("ALTER TABLE users ALTER COLUMN shop_id DROP NOT NULL");
+      } catch (e) {
+        // Ignore if it fails, maybe it's already dropped or we don't have permissions
+      }
+    }
+
+    await db.run(isPostgres 
+      ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
+      : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", 'baye@gmail.com');
+    
+    // Initialize platform settings
+    try {
+      const maintenance = await db.get(isPostgres ? "SELECT * FROM platform_settings WHERE key = $1::text" : "SELECT * FROM platform_settings WHERE key = ?", 'maintenance_mode');
+      if (!maintenance) {
+        await db.run(isPostgres ? "INSERT INTO platform_settings (key, value) VALUES ($1::text, $2::text)" : "INSERT INTO platform_settings (key, value) VALUES (?, ?)", 'maintenance_mode', 'false');
+      }
+      const alertEmail = await db.get(isPostgres ? "SELECT * FROM platform_settings WHERE key = $1::text" : "SELECT * FROM platform_settings WHERE key = ?", 'admin_alert_email');
+      if (!alertEmail) {
+        await db.run(isPostgres ? "INSERT INTO platform_settings (key, value) VALUES ($1::text, $2::text)" : "INSERT INTO platform_settings (key, value) VALUES (?, ?)", 'admin_alert_email', 'kobarbayedame6@gmail.com');
+      }
+    } catch (e) {}
+  } catch (e) {
+    console.error("Error updating admin roles:", e);
+  }
+};
+
+const JWT_SECRET_STR = process.env.JWT_SECRET || "smartstock-senegal-secret-key-2024";
+const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STR);
+
+// Initialize Firebase Admin (for token verification)
+try {
+  const firebaseConfig = JSON.parse(fs.readFileSync(path.join(__dirname, "firebase-applet-config.json"), "utf8"));
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+  console.log("Firebase Admin initialized");
+} catch (e) {
+  console.error("Failed to initialize Firebase Admin:", e);
+}
+
+const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN 
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null;
+
+async function sendNotification(to: string, message: string, type: 'sms' | 'whatsapp', shopId: number) {
+  // Twilio disabled for now as requested
+  console.log(`[Twilio Disabled] Notification to ${to} via ${type}: ${message}`);
+  return;
+  
+  /*
+  if (!twilioClient) {
+    console.warn("Twilio not configured. Skipping notification.");
+    return;
+  }
+
+  const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
+  if (!shop) return;
+
+  const isSms = type === 'sms' && shop.sms_enabled;
+  const isWhatsapp = type === 'whatsapp' && shop.whatsapp_enabled;
+
+  if (!isSms && !isWhatsapp) return;
+
+  try {
+    const from = type === 'sms' ? process.env.TWILIO_PHONE_NUMBER : `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const toFormatted = type === 'whatsapp' ? `whatsapp:${to}` : to;
+
+    await twilioClient.messages.create({
+      body: message,
+      from,
+      to: toFormatted
+    });
+    console.log(`Notification sent to ${to} via ${type}`);
+  } catch (err: any) {
+    console.error(`Error sending ${type} notification:`, err.message);
+  }
+  */
+}
+
+function formatNotificationMessage(template: string, data: { customer_name: string, amount: number, currency: string, shop_name: string }) {
+  return template
+    .replace(/{customer_name}/g, data.customer_name || 'Client')
+    .replace(/{amount}/g, data.amount.toLocaleString())
+    .replace(/{currency}/g, data.currency || 'FCFA')
+    .replace(/{shop_name}/g, data.shop_name || 'Boutique');
+}
+
+const app = express();
+export default app;
+
+// Store active WS connections by shopId
+const clients = new Map<number, Set<WebSocket>>();
+
+const broadcastToShop = (shopId: number, data: any) => {
+  const shopClients = clients.get(shopId);
+  if (shopClients) {
+    const message = JSON.stringify(data);
+    shopClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+};
+
+const alertAdmin = async (title: string, message: string) => {
+  try {
+    const alertEmail = await db.get(isPostgres ? "SELECT value FROM platform_settings WHERE key = $1::text" : "SELECT value FROM platform_settings WHERE key = ?", 'admin_alert_email');
+    const email = alertEmail ? alertEmail.value : 'kobarbayedame6@gmail.com';
+    console.log(`[ADMIN ALERT] To: ${email} | ${title}: ${message}`);
+  } catch (e) {
+    console.error("Failed to alert admin:", e);
+  }
+};
+
+const createNotification = async (shopId: number, type: string, title: string, message: string) => {
+  try {
+    const id = await db.run(
+      isPostgres 
+        ? "INSERT INTO notifications (shop_id, type, title, message) VALUES ($1::int, $2::text, $3::text, $4::text) RETURNING id"
+        : "INSERT INTO notifications (shop_id, type, title, message) VALUES (?, ?, ?, ?)",
+      shopId, type, title, message
+    );
+    const notification = { id: isPostgres ? (id as any).rows[0].id : (id as any).lastID, shop_id: shopId, type, title, message, is_read: 0, created_at: new Date().toISOString() };
+    broadcastToShop(shopId, { type: 'NOTIFICATION', payload: notification });
+    return notification;
+  } catch (e) {
+    console.error("Failed to create notification:", e);
+  }
+};
+
+const logAdminAction = async (userId: number, action: string, details: string, ip: string) => {
+  try {
+    await db.run(isPostgres 
+      ? "INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES ($1::int, $2::text, $3::text, $4::text)"
+      : "INSERT INTO audit_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)",
+      userId, action, details, ip);
+  } catch (e) {
+    console.error("Failed to log admin action:", e);
+  }
+};
+
+let dbInitialized = false;
+app.use(async (req, res, next) => {
+  if (!dbInitialized && req.path.startsWith('/api')) {
+    try {
+      await initDb();
+      dbInitialized = true;
+    } catch (err) {
+      console.error("Database initialization failed:", err);
+    }
+  }
+  next();
+});
+
+async function startServer() {
+  const server = http.createServer(app);
+  // WebSockets only work in long-running server environments, not Vercel Serverless
+  const wss = new WebSocketServer({ server });
+
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
+
+    if (!token) {
+      ws.close();
+      return;
+    }
+
+    jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
+      const shopId = payload.shopId;
+      if (!clients.has(shopId)) {
+        clients.set(shopId, new Set());
+      }
+      clients.get(shopId)!.add(ws);
+
+      ws.on('close', () => {
+        clients.get(shopId)?.delete(ws);
+        if (clients.get(shopId)?.size === 0) {
+          clients.delete(shopId);
+        }
+      });
+    }).catch(() => {
+      ws.close();
+    });
+  });
+
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  
+  // Serve static files
+  app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
+
+  // Auth Middleware
+  const authenticate = async (req: any, res: any, next: any) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const token = authHeader.split(" ")[1];
+      const { payload } = await jwtVerify(token, JWT_SECRET);
+      
+      // Check if shop is blocked or expired (only if user has a shop)
+      if (payload.shopId && payload.role !== 'admin') {
+        const shop = await db.get(isPostgres 
+          ? "SELECT status, plan, subscription_expires_at FROM shops WHERE id = $1::int" 
+          : "SELECT status, plan, subscription_expires_at FROM shops WHERE id = ?", 
+          payload.shopId
+        );
+
+        if (shop) {
+          // Automatic rupture check
+          if (shop.plan !== 'free' && shop.subscription_expires_at) {
+            const expiresAt = new Date(shop.subscription_expires_at).getTime();
+            if (Date.now() > expiresAt && shop.status === 'active') {
+              console.log(`[Auth] Shop ${payload.shopId} subscription EXPIRED. Moving to grace_period.`);
+              await db.run(isPostgres 
+                ? "UPDATE shops SET status = 'grace_period' WHERE id = $1::int" 
+                : "UPDATE shops SET status = 'grace_period' WHERE id = ?", 
+                payload.shopId
+              );
+              shop.status = 'grace_period';
+            }
+          }
+
+          if (shop.status === 'blocked') {
+            console.log(`[Auth] Shop ${payload.shopId} BLOCKED`);
+            return res.status(403).json({ error: "Votre compte a été bloqué par l'administrateur." });
+          }
+          if (shop.status === 'expired') {
+            console.log(`[Auth] Shop ${payload.shopId} EXPIRED`);
+            return res.status(403).json({ error: "Votre abonnement a expiré et la période de grâce est terminée. Vos données seront bientôt supprimées." });
+          }
+        }
+      }
+
+      req.user = payload;
+      next();
+    } catch (e) {
+      console.error("Auth error:", e);
+      res.status(401).json({ error: "Invalid or expired token" });
+    }
+  };
+
+  // Admin Middleware
+  const isAdmin = (req: any, res: any, next: any) => {
+    console.log(`[AdminCheck] User: ${req.user?.userId}, Role: ${req.user?.role}`);
+    if (!req.user || req.user.role !== 'admin') {
+      console.log(`[AdminCheck] Denied: role is ${req.user?.role}`);
+      return res.status(403).json({ error: "Access denied. Admin only." });
+    }
+    console.log(`[AdminCheck] Granted`);
+    next();
+  };
+
+  // Auth Routes
+  app.post("/api/auth/register", async (req, res) => {
+    const { shopName, name, email, password } = req.body;
+    if (!shopName || !name || !email || !password) {
+      return res.status(400).json({ error: "Tous les champs sont obligatoires." });
+    }
+    
+    // Password complexity check
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ 
+        error: "Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre." 
+      });
+    }
+
+    try {
+      const shopResult = await db.run(isPostgres ? "INSERT INTO shops (name) VALUES ($1::text) RETURNING id" : "INSERT INTO shops (name) VALUES (?)", shopName);
+      const shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
+      
+      await alertAdmin('Nouvelle Boutique', `Une nouvelle boutique "${shopName}" a été créée par ${name} (${email}).`);
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const userResult = await db.run(isPostgres ? "INSERT INTO users (shop_id, name, email, password_hash, role) VALUES ($1::int, $2::text, $3::text, $4::text, $5::text) RETURNING id" : "INSERT INTO users (shop_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)",
+        shopId, name, email, passwordHash, "owner");
+      
+      const userId = isPostgres ? userResult.rows[0].id : userResult.lastInsertRowid;
+
+      const token = await new SignJWT({ userId, shopId, role: "owner" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime("30d")
+        .sign(JWT_SECRET);
+
+      res.json({ token, user: { 
+        id: userId,
+        name, 
+        email, 
+        role: "owner", 
+        shopName, 
+        plan: 'free',
+        theme: 'light',
+        language: 'fr',
+        currency: 'FCFA',
+        show_tax: false,
+        sms_enabled: false,
+        whatsapp_enabled: false,
+        notification_template: ''
+      } });
+    } catch (e: any) {
+      console.error("Register error:", e);
+      if (e.message.includes("unique constraint") || e.message.includes("UNIQUE constraint")) {
+        return res.status(400).json({ error: "Cet email est déjà utilisé par un autre compte." });
+      }
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const user = await db.get(isPostgres 
+        ? "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
+        : "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
+      
+      if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+    if (user.shopStatus === 'blocked' && user.role !== 'admin') {
+      return res.status(403).json({ error: "Votre compte a été bloqué par l'administrateur." });
+    }
+
+    const token = await new SignJWT({ userId: user.id, shopId: user.shop_id, role: user.role })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("30d")
+      .sign(JWT_SECRET);
+    
+    res.json({ token, user: { 
+      id: user.id,
+      shopId: user.shop_id,
+      name: user.name, 
+      email: user.email, 
+      role: user.role, 
+      shopName: user.shopName || 'Administration Centrale', 
+      plan: user.plan || 'premium',
+      logo_url: user.logo_url,
+      theme: user.theme || 'dark',
+      language: user.language || 'fr',
+      currency: user.currency || 'FCFA',
+      receipt_footer: user.receipt_footer,
+      show_tax: !!user.show_tax,
+      sms_enabled: !!user.sms_enabled,
+      whatsapp_enabled: !!user.whatsapp_enabled,
+      notification_template: user.notification_template || ''
+    } });
+    } catch (e: any) {
+      console.error("Login error:", e);
+      res.status(500).json({ error: "Une erreur est survenue lors de la connexion." });
+    }
+  });
+
+  app.post("/api/auth/google", async (req, res) => {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) return res.status(400).json({ error: "Token manquant" });
+
+      // Verify Firebase ID Token
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const { email, name, picture, uid } = decodedToken;
+
+      if (!email) return res.status(400).json({ error: "Email non fourni par Google" });
+
+      // Check if user exists
+      let user = await db.get(isPostgres 
+        ? "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
+        : "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
+
+      if (!user) {
+        // Create new shop and user if not exists
+        const shopName = `Boutique de ${name || email.split('@')[0]}`;
+        const shopResult = await db.run(isPostgres ? "INSERT INTO shops (name) VALUES ($1::text) RETURNING id" : "INSERT INTO shops (name) VALUES (?)", shopName);
+        const shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
+        
+        // Use a random password hash for Google users (they'll use Google to login anyway)
+        const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
+        
+        const userResult = await db.run(isPostgres ? "INSERT INTO users (shop_id, name, email, password_hash, role) VALUES ($1::int, $2::text, $3::text, $4::text, $5::text) RETURNING id" : "INSERT INTO users (shop_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)",
+          shopId, name || email.split('@')[0], email, passwordHash, "owner");
+        
+        const userId = isPostgres ? userResult.rows[0].id : userResult.lastInsertRowid;
+        
+        user = {
+          id: userId,
+          shop_id: shopId,
+          name: name || email.split('@')[0],
+          email,
+          role: "owner",
+          shopName,
+          plan: 'free',
+          theme: 'light',
+          language: 'fr',
+          currency: 'FCFA',
+          show_tax: 0,
+          sms_enabled: 0,
+          whatsapp_enabled: 0,
+          notification_template: ''
+        };
+      }
+
+      const token = await new SignJWT({ userId: user.id, shopId: user.shop_id, role: user.role })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime("30d")
+        .sign(JWT_SECRET);
+
+      res.json({ token, user: { 
+        id: user.id,
+        shopId: user.shop_id,
+        name: user.name, 
+        email: user.email, 
+        role: user.role, 
+        shopName: user.shopName, 
+        plan: user.plan || 'free',
+        logo_url: user.logo_url,
+        theme: user.theme || 'light',
+        language: user.language || 'fr',
+        currency: user.currency || 'FCFA',
+        receipt_footer: user.receipt_footer,
+        show_tax: !!user.show_tax,
+        sms_enabled: !!user.sms_enabled,
+        whatsapp_enabled: !!user.whatsapp_enabled,
+        notification_template: user.notification_template || ''
+      } });
+
+    } catch (e: any) {
+      console.error("Google auth error:", e);
+      res.status(500).json({ error: "Erreur d'authentification Google" });
+    }
+  });
+
+  app.get("/api/shop/subscription", authenticate, async (req: any, res) => {
+    console.log(`[API] Fetching subscription for shop ${req.user.shopId}`);
+    try {
+      const shop = await db.get(isPostgres 
+        ? "SELECT plan, subscription_expires_at, status FROM shops WHERE id = $1::int" 
+        : "SELECT plan, subscription_expires_at, status FROM shops WHERE id = ?", 
+        req.user.shopId
+      );
+      if (!shop) {
+        console.warn(`[API] Shop ${req.user.shopId} not found for subscription check`);
+        return res.status(404).json({ error: "Shop not found" });
+      }
+      res.json(shop);
+    } catch (e: any) {
+      console.error("Get shop subscription error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Shop Routes
+  app.post("/api/shop/upgrade", authenticate, async (req: any, res) => {
+    try {
+      const { plan } = req.body; // 'premium'
+      await db.run(isPostgres ? "UPDATE shops SET plan = $1::text WHERE id = $2::int" : "UPDATE shops SET plan = ? WHERE id = ?", plan, req.user.shopId);
+      res.json({ success: true, plan });
+    } catch (e: any) {
+      console.error("Upgrade shop error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Subscription Request Routes
+  app.post("/api/subscription/request", authenticate, async (req: any, res) => {
+    try {
+      const { plan, payment_method, phone_number, transaction_ref } = req.body;
+      const result = await db.run(isPostgres 
+        ? `INSERT INTO subscription_requests (shop_id, user_id, plan, payment_method, phone_number, transaction_ref)
+           VALUES ($1::int, $2::int, $3::text, $4::text, $5::text, $6::text) RETURNING id`
+        : `INSERT INTO subscription_requests (shop_id, user_id, plan, payment_method, phone_number, transaction_ref)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        req.user.shopId, req.user.userId, plan, payment_method, phone_number, transaction_ref);
+      
+      const requestId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      
+      await alertAdmin('Demande d\'Abonnement', `La boutique ID ${req.user.shopId} a demandé le plan ${plan} via ${payment_method}.`);
+      
+      res.json({ id: requestId });
+    } catch (e: any) {
+      console.error("Subscription request error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/subscription/my-requests", authenticate, async (req: any, res) => {
+    try {
+      const requests = await db.all(isPostgres ? "SELECT * FROM subscription_requests WHERE shop_id = $1::int ORDER BY created_at DESC" : "SELECT * FROM subscription_requests WHERE shop_id = ? ORDER BY created_at DESC", req.user.shopId);
+      res.json(requests);
+    } catch (e: any) {
+      console.error("Get my requests error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/shop/settings", authenticate, async (req: any, res) => {
+    try {
+      const { logo_url, theme, language, currency, receipt_footer, show_tax, has_ai_features } = req.body;
+      await db.run(isPostgres
+        ? `UPDATE shops 
+           SET logo_url = COALESCE($1::text, logo_url), 
+               theme = COALESCE($2::text, theme), 
+               language = COALESCE($3::text, language), 
+               currency = COALESCE($4::text, currency), 
+               receipt_footer = COALESCE($5::text, receipt_footer), 
+               show_tax = COALESCE($6::int, show_tax),
+               has_ai_features = COALESCE($7::int, has_ai_features)
+           WHERE id = $8::int`
+        : `UPDATE shops 
+           SET logo_url = COALESCE(?, logo_url), 
+               theme = COALESCE(?, theme), 
+               language = COALESCE(?, language), 
+               currency = COALESCE(?, currency), 
+               receipt_footer = COALESCE(?, receipt_footer), 
+               show_tax = COALESCE(?, show_tax),
+               has_ai_features = COALESCE(?, has_ai_features)
+           WHERE id = ?`,
+        logo_url, theme, language, currency, receipt_footer, 
+        show_tax === undefined ? null : (show_tax ? 1 : 0), 
+        has_ai_features === undefined ? null : (has_ai_features ? 1 : 0),
+        req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update settings error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/auth/promote-to-admin", authenticate, async (req: any, res) => {
+    try {
+      // Check if the user is the authorized admin email
+      const user = await db.get(isPostgres ? "SELECT email FROM users WHERE id = $1::int" : "SELECT email FROM users WHERE id = ?", req.user.userId);
+      if (user?.email !== 'baye@gmail.com') {
+        return res.status(403).json({ error: "Seul l'administrateur principal (baye@gmail.com) peut effectuer cette action." });
+      }
+
+      await db.run(isPostgres ? "UPDATE users SET role = 'admin' WHERE id = $1::int" : "UPDATE users SET role = 'admin' WHERE id = ?", req.user.userId);
+      
+      // Generate a new token with the updated role
+      const newToken = await new SignJWT({ 
+        userId: req.user.userId, 
+        shopId: req.user.shopId, 
+        role: 'admin' 
+      })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime("30d")
+        .sign(JWT_SECRET);
+
+      res.json({ success: true, role: 'admin', token: newToken });
+    } catch (err: any) {
+      console.error("Promote to admin error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Upload Route
+  app.post("/api/upload", authenticate, upload.single("image"), (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      const imageUrl = `/uploads/${req.file.filename}`;
+      res.json({ imageUrl });
+    } catch (e: any) {
+      console.error("Upload error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/user/profile", authenticate, async (req: any, res) => {
+    try {
+      const { name } = req.body;
+      if (!name) return res.status(400).json({ error: "Name is required" });
+      
+      await db.run(isPostgres ? "UPDATE users SET name = $1::text WHERE id = $2::int" : "UPDATE users SET name = ? WHERE id = ?", name, req.user.userId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update profile error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Notification Routes
+  app.get("/api/notifications/status", authenticate, async (req: any, res) => {
+    res.json({ configured: !!twilioClient });
+  });
+
+  app.post("/api/notifications/send", authenticate, async (req: any, res) => {
+    try {
+      const { to, message, type } = req.body;
+      if (!to || !message || !type) {
+        return res.status(400).json({ error: "Missing parameters" });
+      }
+      await sendNotification(to, message, type, req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/shop/notifications/settings", authenticate, async (req: any, res) => {
+    try {
+      const { sms_enabled, whatsapp_enabled, notification_template } = req.body;
+      await db.run(isPostgres
+        ? `UPDATE shops 
+           SET sms_enabled = COALESCE($1::int, sms_enabled), 
+               whatsapp_enabled = COALESCE($2::int, whatsapp_enabled), 
+               notification_template = COALESCE($3::text, notification_template)
+           WHERE id = $4::int`
+        : `UPDATE shops 
+           SET sms_enabled = COALESCE(?, sms_enabled), 
+               whatsapp_enabled = COALESCE(?, whatsapp_enabled), 
+               notification_template = COALESCE(?, notification_template)
+           WHERE id = ?`,
+        sms_enabled === undefined ? null : (sms_enabled ? 1 : 0),
+        whatsapp_enabled === undefined ? null : (whatsapp_enabled ? 1 : 0),
+        notification_template,
+        req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  // Suppliers Routes
+  app.get("/api/suppliers", authenticate, async (req: any, res) => {
+    try {
+      const suppliers = await db.all(isPostgres ? 'SELECT * FROM suppliers WHERE shop_id = $1::int ORDER BY name ASC' : 'SELECT * FROM suppliers WHERE shop_id = ? ORDER BY name ASC', req.user.shopId);
+      res.json(suppliers);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/suppliers", authenticate, async (req: any, res) => {
+    try {
+      const { name, contact_name, phone, email, address } = req.body;
+      const result = await db.run(
+        isPostgres ? 'INSERT INTO suppliers (shop_id, name, contact_name, phone, email, address) VALUES ($1::int, $2::text, $3::text, $4::text, $5::text, $6::text) RETURNING id' : 'INSERT INTO suppliers (shop_id, name, contact_name, phone, email, address) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.user.shopId, name, contact_name, phone, email, address]
+      );
+      const supplierId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      const newSupplier = await db.get(isPostgres ? 'SELECT * FROM suppliers WHERE id = $1::int' : 'SELECT * FROM suppliers WHERE id = ?', supplierId);
+      res.status(201).json(newSupplier);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/suppliers/:id", authenticate, async (req: any, res) => {
+    try {
+      const { name, contact_name, phone, email, address } = req.body;
+      await db.run(
+        isPostgres ? 'UPDATE suppliers SET name = $1::text, contact_name = $2::text, phone = $3::text, email = $4::text, address = $5::text WHERE id = $6::int AND shop_id = $7::int' : 'UPDATE suppliers SET name = ?, contact_name = ?, phone = ?, email = ?, address = ? WHERE id = ? AND shop_id = ?',
+        [name, contact_name, phone, email, address, req.params.id, req.user.shopId]
+      );
+      const updatedSupplier = await db.get(isPostgres ? 'SELECT * FROM suppliers WHERE id = $1::int' : 'SELECT * FROM suppliers WHERE id = ?', req.params.id);
+      res.json(updatedSupplier);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/suppliers/:id", authenticate, async (req: any, res) => {
+    try {
+      await db.run(isPostgres ? 'DELETE FROM suppliers WHERE id = $1::int AND shop_id = $2::int' : 'DELETE FROM suppliers WHERE id = ? AND shop_id = ?', req.params.id, req.user.shopId);
+      res.json({ message: "Supplier deleted" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Export Routes
+  app.get("/api/export/:type", authenticate, async (req: any, res) => {
+    try {
+      const { type } = req.params;
+      let data: any[] = [];
+      
+      if (type === "sales") {
+        data = await db.all(isPostgres ? "SELECT s.*, u.name as userName, c.name as customerName FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN customers c ON s.customer_id = c.id WHERE s.shop_id = $1::int ORDER BY s.created_at DESC" : "SELECT s.*, u.name as userName, c.name as customerName FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN customers c ON s.customer_id = c.id WHERE s.shop_id = ? ORDER BY s.created_at DESC", req.user.shopId);
+      } else if (type === "products") {
+        data = await db.all(isPostgres ? "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = $1::int ORDER BY p.name ASC" : "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = ? ORDER BY p.name ASC", req.user.shopId);
+      } else {
+        return res.status(400).json({ error: "Invalid export type" });
+      }
+
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/products", authenticate, async (req: any, res) => {
+    try {
+      const products = await db.all(isPostgres 
+        ? "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = $1::int" 
+        : "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = ?", 
+        req.user.shopId);
+      res.json(products);
+    } catch (e: any) {
+      console.error("Get products error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/products", authenticate, async (req: any, res) => {
+    try {
+      const { name, barcode, category_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      const result = await db.run(isPostgres 
+        ? "INSERT INTO products (shop_id, category_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES ($1::int, $2::int, $3::text, $4::text, $5::numeric, $6::numeric, $7::numeric, $8::numeric, $9::text) RETURNING id"
+        : "INSERT INTO products (shop_id, category_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        req.user.shopId, category_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url);
+      const productId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      res.json({ id: productId });
+    } catch (e: any) {
+      console.error("Create product error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/products/:id", authenticate, async (req: any, res) => {
+    try {
+      const { name, barcode, category_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      await db.run(isPostgres 
+        ? "UPDATE products SET name = $1::text, barcode = $2::text, category_id = $3::int, purchase_price = $4::numeric, sale_price = $5::numeric, quantity = $6::numeric, min_quantity = $7::numeric, image_url = $8::text WHERE id = $9::int AND shop_id = $10::int"
+        : "UPDATE products SET name = ?, barcode = ?, category_id = ?, purchase_price = ?, sale_price = ?, quantity = ?, min_quantity = ?, image_url = ? WHERE id = ? AND shop_id = ?",
+        name, barcode, category_id, purchase_price, sale_price, quantity, min_quantity, image_url, req.params.id, req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update product error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/products/:id", authenticate, async (req: any, res) => {
+    const productId = req.params.id;
+    const shopId = req.user.shopId;
+    try {
+      await db.transaction(async () => {
+        // Explicitly delete sale items first to be safe
+        await db.run(isPostgres ? "DELETE FROM sale_items WHERE product_id = $1::int AND sale_id IN (SELECT id FROM sales WHERE shop_id = $2::int)" : "DELETE FROM sale_items WHERE product_id = ? AND sale_id IN (SELECT id FROM sales WHERE shop_id = ?)", productId, shopId);
+        
+        // Then delete the product
+        const result = await db.run(isPostgres ? "DELETE FROM products WHERE id = $1::int AND shop_id = $2::int" : "DELETE FROM products WHERE id = ? AND shop_id = ?", productId, shopId);
+        
+        // In some drivers, we can check if anything was deleted
+        // For now, we'll just assume success if no error was thrown
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Delete product error:", e);
+      res.status(500).json({ error: "Erreur lors de la suppression du produit: " + e.message });
+    }
+  });
+
+  // Category Routes
+  app.get("/api/categories", authenticate, async (req: any, res) => {
+    try {
+      const categories = await db.all(isPostgres ? "SELECT * FROM categories WHERE shop_id = $1::int" : "SELECT * FROM categories WHERE shop_id = ?", req.user.shopId);
+      res.json(categories);
+    } catch (e: any) {
+      console.error("Get categories error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/categories", authenticate, async (req: any, res) => {
+    try {
+      const { name } = req.body;
+      const result = await db.run(isPostgres ? "INSERT INTO categories (shop_id, name) VALUES ($1::int, $2::text) RETURNING id" : "INSERT INTO categories (shop_id, name) VALUES (?, ?)", req.user.shopId, name);
+      const categoryId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      res.json({ id: categoryId });
+    } catch (e: any) {
+      console.error("Create category error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/categories/:id", authenticate, async (req: any, res) => {
+    try {
+      const categoryId = req.params.id;
+      // Products have ON DELETE SET NULL for category_id, so we can just delete the category
+      await db.run(isPostgres ? "DELETE FROM categories WHERE id = $1::int AND shop_id = $2::int" : "DELETE FROM categories WHERE id = ? AND shop_id = ?", categoryId, req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Delete category error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Customer Routes
+  app.get("/api/customers", authenticate, async (req: any, res) => {
+    try {
+      const customers = await db.all(isPostgres ? "SELECT * FROM customers WHERE shop_id = $1::int" : "SELECT * FROM customers WHERE shop_id = ?", req.user.shopId);
+      res.json(customers);
+    } catch (e: any) {
+      console.error("Get customers error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/customers", authenticate, async (req: any, res) => {
+    try {
+      const { name, phone, email, address } = req.body;
+      const result = await db.run(isPostgres 
+        ? "INSERT INTO customers (shop_id, name, phone, email, address) VALUES ($1::int, $2::text, $3::text, $4::text, $5::text) RETURNING id"
+        : "INSERT INTO customers (shop_id, name, phone, email, address) VALUES (?, ?, ?, ?, ?)",
+        req.user.shopId, name, phone, email, address);
+      const customerId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      res.json({ id: customerId });
+    } catch (e: any) {
+      console.error("Create customer error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/customers/:id", authenticate, async (req: any, res) => {
+    try {
+      const { name, phone, email, address } = req.body;
+      await db.run(
+        isPostgres 
+          ? "UPDATE customers SET name = $1::text, phone = $2::text, email = $3::text, address = $4::text WHERE id = $5::int AND shop_id = $6::int"
+          : "UPDATE customers SET name = ?, phone = ?, email = ?, address = ? WHERE id = ? AND shop_id = ?",
+        name, phone, email, address, req.params.id, req.user.shopId
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update customer error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/customers/:id", authenticate, async (req: any, res) => {
+    try {
+      await db.run(
+        isPostgres 
+          ? "DELETE FROM customers WHERE id = $1::int AND shop_id = $2::int"
+          : "DELETE FROM customers WHERE id = ? AND shop_id = ?",
+        req.params.id, req.user.shopId
+      );
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Delete customer error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Sales Routes
+  app.post("/api/sales", authenticate, async (req: any, res) => {
+    const { items, total_amount, customer_id, tax_amount, discount_amount, payment_method, payment_status, amount_paid } = req.body;
+    const shopId = req.user.shopId;
+    const userId = req.user.userId;
+
+    try {
+      let saleId: number | null = null;
+      await db.transaction(async () => {
+        let totalProfit = 0;
+        // Calculate total profit and verify stock
+        for (const item of items) {
+          const product = await db.get(isPostgres ? "SELECT * FROM products WHERE id = $1::int AND shop_id = $2::int" : "SELECT * FROM products WHERE id = ? AND shop_id = ?", item.product_id, shopId);
+          if (!product || product.quantity < item.quantity) {
+            throw new Error(`Stock insuffisant pour ${product?.name || 'produit inconnu'}`);
+          }
+          const profit = (item.unit_price - product.purchase_price) * item.quantity;
+          totalProfit += profit;
+          item.unit_profit = item.unit_price - product.purchase_price;
+        }
+
+        const saleResult = await db.run(isPostgres 
+          ? `INSERT INTO sales (shop_id, user_id, customer_id, total_amount, total_profit, tax_amount, discount_amount, payment_method, payment_status, amount_paid) 
+             VALUES ($1::int, $2::int, $3::int, $4::numeric, $5::numeric, $6::numeric, $7::numeric, $8::text, $9::text, $10::numeric) RETURNING id`
+          : `INSERT INTO sales (shop_id, user_id, customer_id, total_amount, total_profit, tax_amount, discount_amount, payment_method, payment_status, amount_paid) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          shopId, userId, customer_id || null, total_amount, totalProfit, tax_amount || 0, discount_amount || 0, payment_method || 'cash', payment_status || 'paid', amount_paid || total_amount);
+        
+        saleId = isPostgres ? saleResult.rows[0].id : saleResult.lastInsertRowid;
+
+        // Update customer debt if applicable
+        if (customer_id && (payment_status === 'debt' || payment_status === 'partial')) {
+          const debtAmount = total_amount - (amount_paid || 0);
+          await db.run(isPostgres 
+            ? "UPDATE customers SET total_debt = total_debt + $1::numeric WHERE id = $2::int"
+            : "UPDATE customers SET total_debt = total_debt + ? WHERE id = ?",
+            debtAmount, customer_id);
+        }
+
+        for (const item of items) {
+          await db.run(isPostgres ? "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit) VALUES ($1::int, $2::int, $3::numeric, $4::numeric, $5::numeric)" : "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit) VALUES (?, ?, ?, ?, ?)",
+            saleId, item.product_id, item.quantity, item.unit_price, item.unit_profit);
+          await db.run(isPostgres ? "UPDATE products SET quantity = quantity - $1::numeric WHERE id = $2::int" : "UPDATE products SET quantity = quantity - ? WHERE id = ?", item.quantity, item.product_id);
+          
+          // Check for low stock after update
+          const updatedProduct = await db.get(isPostgres ? "SELECT * FROM products WHERE id = $1::int" : "SELECT * FROM products WHERE id = ?", item.product_id);
+          if (updatedProduct.quantity <= updatedProduct.min_quantity) {
+            await createNotification(
+              shopId, 
+              'LOW_STOCK', 
+              'Stock Faible', 
+              `Le produit "${updatedProduct.name}" est presque épuisé (${updatedProduct.quantity} restants).`
+            );
+          }
+        }
+      });
+
+      // Send notification if customer is selected
+      if (customer_id) {
+        try {
+          const customer = await db.get(isPostgres ? "SELECT * FROM customers WHERE id = $1::int" : "SELECT * FROM customers WHERE id = ?", customer_id);
+          const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
+          
+          if (customer && customer.phone && shop && shop.notification_template) {
+            const message = formatNotificationMessage(shop.notification_template, {
+              customer_name: customer.name,
+              amount: total_amount,
+              currency: shop.currency || 'FCFA',
+              shop_name: shop.name
+            });
+            
+            if (shop.sms_enabled) {
+              await sendNotification(customer.phone, message, 'sms', shopId);
+            }
+            if (shop.whatsapp_enabled) {
+              await sendNotification(customer.phone, message, 'whatsapp', shopId);
+            }
+          }
+        } catch (notifErr) {
+          console.error("Failed to send sale notification:", notifErr);
+        }
+      }
+
+      // Alert manager if sale is made by an employee
+      if (req.user.role === 'employee') {
+        try {
+          const user = await db.get(isPostgres ? "SELECT name FROM users WHERE id = $1::int" : "SELECT name FROM users WHERE id = ?", userId);
+          const shop = await db.get(isPostgres ? "SELECT currency FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
+          await createNotification(
+            shopId,
+            'SALE_ALERT',
+            'Nouvelle Vente',
+            `L'employé(e) ${user.name} vient d'effectuer une vente de ${total_amount.toLocaleString()} ${shop.currency || 'FCFA'}.`
+          );
+        } catch (alertErr) {
+          console.error("Failed to send manager alert:", alertErr);
+        }
+      }
+
+      res.json({ id: saleId });
+    } catch (e: any) {
+      console.error("Sale error:", e);
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/customers/:id/history", authenticate, async (req: any, res) => {
+    try {
+      const sales = await db.all(isPostgres 
+        ? "SELECT * FROM sales WHERE customer_id = $1::int AND shop_id = $2::int ORDER BY created_at DESC"
+        : "SELECT * FROM sales WHERE customer_id = ? AND shop_id = ? ORDER BY created_at DESC",
+        req.params.id, req.user.shopId);
+      
+      const payments = await db.all(isPostgres
+        ? "SELECT * FROM customer_payments WHERE customer_id = $1::int AND shop_id = $2::int ORDER BY created_at DESC"
+        : "SELECT * FROM customer_payments WHERE customer_id = ? AND shop_id = ? ORDER BY created_at DESC",
+        req.params.id, req.user.shopId);
+
+      res.json({ sales, payments });
+    } catch (e: any) {
+      console.error("Get customer history error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/customers/:id/payments", authenticate, async (req: any, res) => {
+    const { amount, payment_method, notes } = req.body;
+    const shopId = req.user.shopId;
+    const userId = req.user.userId;
+    const customerId = req.params.id;
+
+    try {
+      await db.transaction(async () => {
+        await db.run(isPostgres
+          ? "INSERT INTO customer_payments (shop_id, customer_id, user_id, amount, payment_method, notes) VALUES ($1::int, $2::int, $3::int, $4::numeric, $5::text, $6::text)"
+          : "INSERT INTO customer_payments (shop_id, customer_id, user_id, amount, payment_method, notes) VALUES (?, ?, ?, ?, ?, ?)",
+          shopId, customerId, userId, amount, payment_method || 'cash', notes || '');
+
+        await db.run(isPostgres
+          ? "UPDATE customers SET total_debt = total_debt - $1::numeric WHERE id = $2::int"
+          : "UPDATE customers SET total_debt = total_debt - ? WHERE id = ?",
+          amount, customerId);
+      });
+
+      // Send payment notification
+      try {
+        const customer = await db.get(isPostgres ? "SELECT * FROM customers WHERE id = $1::int" : "SELECT * FROM customers WHERE id = ?", customerId);
+        const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
+        
+        if (customer && customer.phone && shop) {
+          const template = shop.notification_template || "Bonjour {customer_name}, nous avons bien reçu votre paiement de {amount} {currency}. Merci !";
+          const message = formatNotificationMessage(template, {
+            customer_name: customer.name,
+            amount: amount,
+            currency: shop.currency || 'FCFA',
+            shop_name: shop.name
+          });
+          
+          if (shop.sms_enabled) {
+            await sendNotification(customer.phone, message, 'sms', shopId);
+          }
+          if (shop.whatsapp_enabled) {
+            await sendNotification(customer.phone, message, 'whatsapp', shopId);
+          }
+        }
+      } catch (notifErr) {
+        console.error("Failed to send payment notification:", notifErr);
+      }
+
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Add customer payment error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/api/sales/history", authenticate, async (req: any, res) => {
+    try {
+      const sales = await db.all(isPostgres 
+        ? `SELECT s.*, u.name as userName 
+           FROM sales s 
+           JOIN users u ON s.user_id = u.id 
+           WHERE s.shop_id = $1::int 
+           ORDER BY s.created_at DESC`
+        : `SELECT s.*, u.name as userName 
+           FROM sales s 
+           JOIN users u ON s.user_id = u.id 
+           WHERE s.shop_id = ? 
+           ORDER BY s.created_at DESC`,
+        req.user.shopId);
+      res.json(sales);
+    } catch (e: any) {
+      console.error("Get sales history error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/sales/:id", authenticate, async (req: any, res) => {
+    try {
+      const sale = await db.get(isPostgres
+        ? `SELECT s.*, u.name as userName, sh.name as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
+                 c.name as customerName, c.phone as customerPhone, c.address as customerAddress
+          FROM sales s 
+          JOIN users u ON s.user_id = u.id 
+          JOIN shops sh ON s.shop_id = sh.id
+          LEFT JOIN customers c ON s.customer_id = c.id
+          WHERE s.id = $1::int AND s.shop_id = $2::int`
+        : `SELECT s.*, u.name as userName, sh.name as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
+                 c.name as customerName, c.phone as customerPhone, c.address as customerAddress
+          FROM sales s 
+          JOIN users u ON s.user_id = u.id 
+          JOIN shops sh ON s.shop_id = sh.id
+          LEFT JOIN customers c ON s.customer_id = c.id
+          WHERE s.id = ? AND s.shop_id = ?`,
+        req.params.id, req.user.shopId);
+
+      if (!sale) return res.status(404).json({ error: "Vente non trouvée" });
+
+      const items = await db.all(isPostgres
+        ? `SELECT si.*, p.name as productName
+          FROM sale_items si
+          JOIN products p ON si.product_id = p.id
+          WHERE si.sale_id = $1::int`
+        : `SELECT si.*, p.name as productName
+          FROM sale_items si
+          JOIN products p ON si.product_id = p.id
+          WHERE si.sale_id = ?`,
+        req.params.id);
+
+      res.json({ ...sale, items });
+    } catch (e: any) {
+      console.error("Get sale error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // User Management (for shop owners)
+  app.get("/api/users", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+    try {
+      const users = await db.all(isPostgres
+        ? "SELECT id, name, email, role, created_at FROM users WHERE shop_id = $1::int AND role != 'admin' ORDER BY created_at DESC"
+        : "SELECT id, name, email, role, created_at FROM users WHERE shop_id = ? AND role != 'admin' ORDER BY created_at DESC",
+        req.user.shopId);
+      res.json(users);
+    } catch (e: any) {
+      console.error("Get users error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/users", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+    const { name, email, password, role } = req.body;
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const result = await db.run(isPostgres
+        ? "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES ($1::text, $2::text, $3::text, $4::text, $5::int) RETURNING id"
+        : "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES (?, ?, ?, ?, ?)",
+        name, email, hashedPassword, role || 'employee', req.user.shopId);
+      
+      const newUserId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      res.json({ id: newUserId, name, email, role: role || 'employee' });
+    } catch (e: any) {
+      console.error("Create user error:", e);
+      if (e.message.includes('UNIQUE constraint failed') || e.message.includes('duplicate key value')) {
+        return res.status(400).json({ error: "Cet email est déjà utilisé" });
+      }
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/users/:id", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+    const { name, email, role, password } = req.body;
+    try {
+      if (password) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await db.run(isPostgres
+          ? "UPDATE users SET name = $1::text, email = $2::text, role = $3::text, password_hash = $4::text WHERE id = $5::int AND shop_id = $6::int"
+          : "UPDATE users SET name = ?, email = ?, role = ?, password_hash = ? WHERE id = ? AND shop_id = ?",
+          name, email, role, hashedPassword, req.params.id, req.user.shopId);
+      } else {
+        await db.run(isPostgres
+          ? "UPDATE users SET name = $1::text, email = $2::text, role = $3::text WHERE id = $4::int AND shop_id = $5::int"
+          : "UPDATE users SET name = ?, email = ?, role = ? WHERE id = ? AND shop_id = ?",
+          name, email, role, req.params.id, req.user.shopId);
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update user error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/users/:id", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+    try {
+      // Don't allow deleting yourself
+      if (parseInt(req.params.id) === req.user.userId) {
+        return res.status(400).json({ error: "Vous ne pouvez pas supprimer votre propre compte" });
+      }
+      await db.run(isPostgres
+        ? "DELETE FROM users WHERE id = $1::int AND shop_id = $2::int"
+        : "DELETE FROM users WHERE id = ? AND shop_id = ?",
+        req.params.id, req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Delete user error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/dashboard/stats", authenticate, async (req: any, res) => {
+    try {
+      const shopId = req.user.shopId;
+      
+      const salesTodaySql = isPostgres 
+        ? "SELECT SUM(total_amount) as total FROM sales WHERE shop_id = $1::int AND created_at::date = CURRENT_DATE"
+        : "SELECT SUM(total_amount) as total FROM sales WHERE shop_id = ? AND date(created_at) = date('now')";
+      
+      const profitTodaySql = isPostgres
+        ? "SELECT SUM(total_profit) as total FROM sales WHERE shop_id = $1::int AND created_at::date = CURRENT_DATE"
+        : "SELECT SUM(total_profit) as total FROM sales WHERE shop_id = ? AND date(created_at) = date('now')";
+
+      const expensesTodaySql = isPostgres
+        ? "SELECT SUM(amount) as total FROM expenses WHERE shop_id = $1::int AND date::date = CURRENT_DATE"
+        : "SELECT SUM(amount) as total FROM expenses WHERE shop_id = ? AND date(date) = date('now')";
+  
+      const recentSalesSql = isPostgres
+        ? `SELECT created_at::date as date, SUM(total_amount) as amount 
+           FROM sales 
+           WHERE shop_id = $1::int AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+           GROUP BY created_at::date
+           ORDER BY date`
+        : `SELECT date(created_at) as date, SUM(total_amount) as amount 
+           FROM sales 
+           WHERE shop_id = ? AND created_at >= date('now', '-7 days')
+           GROUP BY date(created_at)
+           ORDER BY date`;
+  
+      const salesToday = await db.get(salesTodaySql, shopId);
+      const profitToday = await db.get(profitTodaySql, shopId);
+      const expensesToday = await db.get(expensesTodaySql, shopId);
+      const lowStock = await db.get(isPostgres ? "SELECT COUNT(*) as count FROM products WHERE shop_id = $1::int AND quantity <= min_quantity" : "SELECT COUNT(*) as count FROM products WHERE shop_id = ? AND quantity <= min_quantity", shopId);
+      const totalProducts = await db.get(isPostgres ? "SELECT COUNT(*) as count FROM products WHERE shop_id = $1::int" : "SELECT COUNT(*) as count FROM products WHERE shop_id = ?", shopId);
+      const totalStock = await db.get(isPostgres ? "SELECT SUM(quantity) as total FROM products WHERE shop_id = $1::int" : "SELECT SUM(quantity) as total FROM products WHERE shop_id = ?", shopId);
+      const totalDebt = await db.get(isPostgres ? "SELECT SUM(total_debt) as total FROM customers WHERE shop_id = $1::int" : "SELECT SUM(total_debt) as total FROM customers WHERE shop_id = ?", shopId);
+      const recentSales = await db.all(recentSalesSql, shopId);
+  
+      res.json({
+        salesToday: salesToday?.total || 0,
+        profitToday: profitToday?.total || 0,
+        expensesToday: expensesToday?.total || 0,
+        lowStockCount: lowStock?.count || 0,
+        totalProducts: totalProducts?.count || 0,
+        totalStock: totalStock?.total || 0,
+        totalDebt: totalDebt?.total || 0,
+        recentSales
+      });
+    } catch (e: any) {
+      console.error("Dashboard stats error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // AI Insights Data Route
+  app.get("/api/ai/insights-data", authenticate, async (req: any, res) => {
+    try {
+      const shopId = req.user.shopId;
+      const products = await db.all(isPostgres ? "SELECT * FROM products WHERE shop_id = $1::int" : "SELECT * FROM products WHERE shop_id = ?", shopId);
+      
+      const salesSql = isPostgres
+        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, p.name as productName
+           FROM sales s
+           JOIN sale_items si ON s.id = si.sale_id
+           JOIN products p ON si.product_id = p.id
+           WHERE s.shop_id = $1::int AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'`
+        : `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, p.name as productName
+           FROM sales s
+           JOIN sale_items si ON s.id = si.sale_id
+           JOIN products p ON si.product_id = p.id
+           WHERE s.shop_id = ? AND s.created_at >= date('now', '-30 days')`;
+
+      const sales = await db.all(salesSql, shopId);
+      res.json({ products, sales });
+    } catch (e: any) {
+      console.error("AI insights data error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin Routes
+  app.get("/api/admin/stats", authenticate, isAdmin, async (req, res) => {
+    try {
+      const totalShops = await db.get("SELECT COUNT(*) as count FROM shops");
+      const totalUsers = await db.get("SELECT COUNT(*) as count FROM users");
+      const totalSales = await db.get("SELECT SUM(total_amount) as total FROM sales");
+      const totalProfit = await db.get("SELECT SUM(total_profit) as total FROM sales");
+      const premiumShops = await db.get("SELECT COUNT(*) as count FROM shops WHERE plan = 'premium'");
+      const totalSubscriptionRevenue = await db.get("SELECT COUNT(*) * 10000 as total FROM subscription_requests WHERE status = 'approved'");
+
+      // Chart data: Subscription revenue (10000 per approved subscription)
+      const subscriptionsByDaySql = isPostgres
+        ? `SELECT created_at::date as date, COUNT(*) * 10000 as amount 
+           FROM subscription_requests 
+           WHERE status = 'approved' AND created_at >= CURRENT_DATE - INTERVAL '30 days'
+           GROUP BY created_at::date
+           ORDER BY date`
+        : `SELECT date(created_at) as date, COUNT(*) * 10000 as amount 
+           FROM subscription_requests 
+           WHERE status = 'approved' AND created_at >= date('now', '-30 days')
+           GROUP BY date(created_at)
+           ORDER BY date`;
+
+      const subscriptionsByDay = await db.all(subscriptionsByDaySql);
+
+      const recentUsers = await db.all(`
+        SELECT u.id, u.name, u.email, u.created_at, s.name as shopName
+        FROM users u
+        LEFT JOIN shops s ON u.shop_id = s.id
+        ORDER BY u.created_at DESC
+        LIMIT 5
+      `);
+
+      const recentSubscriptions = await db.all(`
+        SELECT sr.id, sr.plan, sr.payment_method, sr.created_at, sh.name as shopName, u.name as userName
+        FROM subscription_requests sr
+        JOIN shops sh ON sr.shop_id = sh.id
+        JOIN users u ON sr.user_id = u.id
+        ORDER BY sr.created_at DESC
+        LIMIT 5
+      `);
+
+      res.json({
+        totalShops: totalShops.count,
+        totalUsers: totalUsers.count,
+        totalSales: totalSales.total || 0,
+        totalProfit: totalProfit.total || 0,
+        premiumShops: premiumShops.count,
+        totalSubscriptionRevenue: totalSubscriptionRevenue.total || 0,
+        subscriptionsByDay,
+        recentUsers,
+        recentSubscriptions
+      });
+    } catch (err: any) {
+      console.error("Admin stats error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/admin/shops", authenticate, isAdmin, async (req, res) => {
+    try {
+      const shops = await db.all(`
+        SELECT s.*, 
+          (SELECT COUNT(*) FROM users WHERE shop_id = s.id) as userCount,
+          (SELECT COUNT(*) FROM products WHERE shop_id = s.id) as productCount,
+          (SELECT SUM(total_amount) FROM sales WHERE shop_id = s.id) as totalSales
+        FROM shops s
+      `);
+      res.json(shops);
+    } catch (e: any) {
+      console.error("Admin get shops error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Admin Shop Management
+  app.post("/api/admin/users/create-admin", authenticate, isAdmin, async (req, res) => {
+    try {
+      const { name, email, password } = req.body;
+      if (!name || !email || !password) {
+        return res.status(400).json({ error: "Tous les champs sont obligatoires." });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const result = await db.run(isPostgres 
+        ? "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES ($1::text, $2::text, $3::text, 'admin', NULL) RETURNING id" 
+        : "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES (?, ?, ?, 'admin', NULL)",
+        name, email, passwordHash);
+      
+      const userId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      
+      await logAdminAction((req as any).user.userId, 'CREATE_ADMIN', `New Admin: ${email} (ID: ${userId})`, req.ip);
+      
+      res.status(201).json({ success: true, userId });
+    } catch (e: any) {
+      console.error("Create admin error:", e);
+      if (e.message.includes("unique constraint") || e.message.includes("UNIQUE constraint")) {
+        return res.status(400).json({ error: "Cet email est déjà utilisé." });
+      }
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/shops/:id/block", authenticate, isAdmin, async (req, res) => {
+    try {
+      const { status } = req.body; // 'blocked' or 'active'
+      await db.run(isPostgres ? "UPDATE shops SET status = $1::text WHERE id = $2::int" : "UPDATE shops SET status = ? WHERE id = ?", status, req.params.id);
+      
+      await logAdminAction((req as any).user.userId, status === 'blocked' ? 'BLOCK_SHOP' : 'UNBLOCK_SHOP', `Shop ID: ${req.params.id}`, req.ip);
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Block shop error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/shops/:id/signal", authenticate, isAdmin, async (req, res) => {
+    try {
+      const { signaled } = req.body; // 1 or 0
+      await db.run(isPostgres ? "UPDATE shops SET is_signaled = $1::int WHERE id = $2::int" : "UPDATE shops SET is_signaled = ? WHERE id = ?", signaled ? 1 : 0, req.params.id);
+      
+      await logAdminAction((req as any).user.userId, signaled ? 'SIGNAL_SHOP' : 'UNSIGNAL_SHOP', `Shop ID: ${req.params.id}`, req.ip);
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Signal shop error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/shops/:id", authenticate, isAdmin, async (req, res) => {
+    const shopId = req.params.id;
+    try {
+      await db.transaction(async () => {
+        // Thorough cleanup to avoid foreign key issues
+        await db.run(isPostgres ? "DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE shop_id = $1::int)" : "DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE shop_id = ?)", shopId);
+        await db.run(isPostgres ? "DELETE FROM sale_items WHERE product_id IN (SELECT id FROM products WHERE shop_id = $1::int)" : "DELETE FROM sale_items WHERE product_id IN (SELECT id FROM products WHERE shop_id = ?)", shopId);
+        await db.run(isPostgres ? "DELETE FROM sales WHERE shop_id = $1::int" : "DELETE FROM sales WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM customer_payments WHERE shop_id = $1::int" : "DELETE FROM customer_payments WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM expenses WHERE shop_id = $1::int" : "DELETE FROM expenses WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM products WHERE shop_id = $1::int" : "DELETE FROM products WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM categories WHERE shop_id = $1::int" : "DELETE FROM categories WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM suppliers WHERE shop_id = $1::int" : "DELETE FROM suppliers WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM customers WHERE shop_id = $1::int" : "DELETE FROM customers WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM notifications WHERE shop_id = $1::int" : "DELETE FROM notifications WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM subscription_requests WHERE shop_id = $1::int" : "DELETE FROM subscription_requests WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM users WHERE shop_id = $1::int" : "DELETE FROM users WHERE shop_id = ?", shopId);
+        await db.run(isPostgres ? "DELETE FROM shops WHERE id = $1::int" : "DELETE FROM shops WHERE id = ?", shopId);
+      });
+      
+      await logAdminAction((req as any).user.userId, 'DELETE_SHOP', `Shop ID: ${shopId}`, req.ip);
+      
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete shop error:", err);
+      res.status(500).json({ error: "Erreur lors de la suppression de la boutique: " + err.message });
+    }
+  });
+
+  app.get("/api/admin/users", authenticate, isAdmin, async (req, res) => {
+    try {
+      const users = await db.all(`
+        SELECT u.*, s.name as shopName 
+        FROM users u
+        LEFT JOIN shops s ON u.shop_id = s.id
+        ORDER BY u.created_at DESC
+      `);
+      res.json(users);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", authenticate, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      // Don't allow deleting the super admin
+      const user = await db.get(isPostgres ? "SELECT email FROM users WHERE id = $1::int" : "SELECT email FROM users WHERE id = ?", userId);
+      if (user?.email === 'baye@gmail.com') {
+        return res.status(403).json({ error: "Impossible de supprimer l'administrateur principal." });
+      }
+      await db.run(isPostgres ? "DELETE FROM users WHERE id = $1::int" : "DELETE FROM users WHERE id = ?", userId);
+      
+      await logAdminAction((req as any).user.userId, 'DELETE_USER', `User ID: ${userId} (${user?.email})`, req.ip);
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/broadcast", authenticate, isAdmin, async (req, res) => {
+    try {
+      const { title, message, shopId, type = 'SYSTEM' } = req.body;
+      
+      // Save broadcast history
+      await db.run(isPostgres 
+        ? "INSERT INTO broadcasts (title, message, type, target_shop_id) VALUES ($1::text, $2::text, $3::text, $4::int)"
+        : "INSERT INTO broadcasts (title, message, type, target_shop_id) VALUES (?, ?, ?, ?)",
+        title, message, type, shopId || null);
+
+      if (shopId) {
+        // Send to specific shop
+        await createNotification(shopId, type, title, message);
+        broadcastToShop(shopId, { type: 'NOTIFICATION', payload: { title, message } });
+      } else {
+        // Broadcast to ALL shops
+        const shops = await db.all("SELECT id FROM shops");
+        for (const shop of shops) {
+          await createNotification(shop.id, type, title, message);
+          broadcastToShop(shop.id, { type: 'NOTIFICATION', payload: { title, message } });
+        }
+      }
+      
+      await logAdminAction((req as any).user.userId, 'SEND_BROADCAST', `Title: ${title}`, req.ip);
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/admin/broadcasts", authenticate, isAdmin, async (req, res) => {
+    try {
+      const broadcasts = await db.all(isPostgres
+        ? "SELECT b.*, s.name as shopName FROM broadcasts b LEFT JOIN shops s ON b.target_shop_id = s.id ORDER BY b.created_at DESC"
+        : "SELECT b.*, s.name as shopName FROM broadcasts b LEFT JOIN shops s ON b.target_shop_id = s.id ORDER BY b.created_at DESC");
+      res.json(broadcasts);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/admin/subscription-requests", authenticate, isAdmin, async (req, res) => {
+    try {
+      const requests = await db.all(`
+        SELECT sr.*, s.name as shopName, u.name as userName 
+        FROM subscription_requests sr
+        JOIN shops s ON sr.shop_id = s.id
+        JOIN users u ON sr.user_id = u.id
+        ORDER BY sr.created_at DESC
+      `);
+      res.json(requests);
+    } catch (e: any) {
+      console.error("Admin get subscription requests error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/subscription-requests/:id/approve", authenticate, isAdmin, async (req, res) => {
+    console.log(`[Approve] Request received for ID: ${req.params.id}`);
+    const requestId = parseInt(req.params.id);
+    if (isNaN(requestId)) {
+      console.log(`[Approve] Invalid ID: ${req.params.id}`);
+      return res.status(400).json({ error: "Invalid request ID" });
+    }
+
+    const request = await db.get(isPostgres ? "SELECT * FROM subscription_requests WHERE id = $1::int" : "SELECT * FROM subscription_requests WHERE id = ?", requestId);
+    if (!request) {
+      console.log(`[Approve] Request ${requestId} not found in DB`);
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    console.log(`[Approve] Found request for shop ${request.shop_id}, plan ${request.plan}`);
+ 
+    try {
+      await db.transaction(async () => {
+        console.log(`[Approve] Updating request status...`);
+        await db.run(isPostgres ? "UPDATE subscription_requests SET status = 'approved' WHERE id = $1::int" : "UPDATE subscription_requests SET status = 'approved' WHERE id = ?", requestId);
+        console.log(`[Approve] Updating shop plan...`);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+        const expiresAtStr = expiresAt.toISOString().replace('T', ' ').replace('Z', '');
+
+        await db.run(isPostgres 
+          ? "UPDATE shops SET plan = $1::text, subscription_expires_at = $2::timestamp, status = 'active' WHERE id = $3::int" 
+          : "UPDATE shops SET plan = ?, subscription_expires_at = ?, status = 'active' WHERE id = ?", 
+          request.plan, expiresAtStr, request.shop_id);
+        
+        console.log(`[Approve] Creating notification...`);
+        await createNotification(
+          request.shop_id,
+          'SUBSCRIPTION_APPROVED',
+          'Abonnement Activé !',
+          `Félicitations ! Votre demande d'abonnement ${request.plan} a été approuvée. Profitez de vos nouvelles fonctionnalités.`
+        );
+
+        broadcastToShop(request.shop_id, { type: 'PLAN_UPDATED', payload: { plan: request.plan } });
+      });
+      
+      await logAdminAction((req as any).user.userId, 'APPROVE_SUBSCRIPTION', `Request ID: ${requestId}, Shop ID: ${request.shop_id}, Plan: ${request.plan}`, req.ip);
+      
+      console.log(`[Approve] Success for request ${requestId}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Approve] Transaction error:", error);
+      res.status(500).json({ error: "Failed to approve subscription: " + error.message });
+    }
+  });
+
+  app.post("/api/admin/subscription-requests/:id/reject", authenticate, isAdmin, async (req, res) => {
+    console.log(`[Reject] Request received for ID: ${req.params.id}`);
+    const requestId = parseInt(req.params.id);
+    if (isNaN(requestId)) {
+      console.log(`[Reject] Invalid ID: ${req.params.id}`);
+      return res.status(400).json({ error: "Invalid request ID" });
+    }
+
+    const request = await db.get(isPostgres ? "SELECT * FROM subscription_requests WHERE id = $1::int" : "SELECT * FROM subscription_requests WHERE id = ?", requestId);
+    if (!request) {
+      console.log(`[Reject] Request ${requestId} not found in DB`);
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    try {
+      console.log(`[Reject] Updating request status...`);
+      await db.run(isPostgres ? "UPDATE subscription_requests SET status = 'rejected' WHERE id = $1::int" : "UPDATE subscription_requests SET status = 'rejected' WHERE id = ?", requestId);
+      
+      console.log(`[Reject] Creating notification...`);
+      await createNotification(
+        request.shop_id,
+        'SUBSCRIPTION_REJECTED',
+        'Abonnement Refusé',
+        `Votre demande d'abonnement a été refusée. Veuillez vérifier vos informations de paiement ou contacter le support.`
+      );
+
+      await logAdminAction((req as any).user.userId, 'REJECT_SUBSCRIPTION', `Request ID: ${requestId}, Shop ID: ${request.shop_id}`, req.ip);
+
+      console.log(`[Reject] Success for request ${requestId}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Reject] Error:", error);
+      res.status(500).json({ error: "Failed to reject subscription: " + error.message });
+    }
+  });
+
+  // Admin Logs & Settings
+  app.get("/api/admin/logs", authenticate, isAdmin, async (req, res) => {
+    try {
+      const logs = await db.all(isPostgres
+        ? "SELECT l.*, u.name as userName, u.email as userEmail FROM audit_logs l LEFT JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC LIMIT 100"
+        : "SELECT l.*, u.name as userName, u.email as userEmail FROM audit_logs l LEFT JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC LIMIT 100");
+      res.json(logs);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/admin/settings", authenticate, isAdmin, async (req, res) => {
+    try {
+      const settings = await db.all("SELECT * FROM platform_settings");
+      const settingsMap = settings.reduce((acc: any, s: any) => {
+        acc[s.key] = s.value;
+        return acc;
+      }, {});
+      res.json(settingsMap);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/admin/settings", authenticate, isAdmin, async (req, res) => {
+    try {
+      const settings = req.body;
+      await db.transaction(async () => {
+        for (const [key, value] of Object.entries(settings)) {
+          if (isPostgres) {
+            await db.run(`
+              INSERT INTO platform_settings (key, value, updated_at) 
+              VALUES ($1::text, $2::text, CURRENT_TIMESTAMP)
+              ON CONFLICT (key) DO UPDATE SET value = $2::text, updated_at = CURRENT_TIMESTAMP
+            `, key, String(value));
+          } else {
+            await db.run("INSERT OR REPLACE INTO platform_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)", key, String(value));
+          }
+        }
+      });
+      
+      await logAdminAction((req as any).user.userId, 'UPDATE_SETTINGS', 'Updated platform settings', req.ip);
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Notifications Routes
+  app.get("/api/notifications", authenticate, async (req: any, res) => {
+    try {
+      const notifications = await db.all(isPostgres ? "SELECT * FROM notifications WHERE shop_id = $1::int ORDER BY created_at DESC LIMIT 50" : "SELECT * FROM notifications WHERE shop_id = ? ORDER BY created_at DESC LIMIT 50", req.user.shopId);
+      res.json(notifications);
+    } catch (e: any) {
+      console.error("Get notifications error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Expense Routes
+  app.get("/api/expenses", authenticate, async (req: any, res) => {
+    try {
+      const expenses = await db.all(isPostgres 
+        ? "SELECT e.*, u.name as userName FROM expenses e JOIN users u ON e.user_id = u.id WHERE e.shop_id = $1::int ORDER BY e.date DESC" 
+        : "SELECT e.*, u.name as userName FROM expenses e JOIN users u ON e.user_id = u.id WHERE e.shop_id = ? ORDER BY e.date DESC", 
+        req.user.shopId);
+      res.json(expenses);
+    } catch (e: any) {
+      console.error("Get expenses error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/expenses", authenticate, async (req: any, res) => {
+    try {
+      const { title, amount, category, description, date } = req.body;
+      const result = await db.run(isPostgres 
+        ? "INSERT INTO expenses (shop_id, user_id, title, amount, category, description, date) VALUES ($1::int, $2::int, $3::text, $4::numeric, $5::text, $6::text, $7::timestamp) RETURNING id"
+        : "INSERT INTO expenses (shop_id, user_id, title, amount, category, description, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        req.user.shopId, req.user.userId, title, amount, category, description, date || new Date().toISOString());
+      const expenseId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
+      res.json({ id: expenseId });
+    } catch (e: any) {
+      console.error("Create expense error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/expenses/:id", authenticate, async (req: any, res) => {
+    try {
+      await db.run(isPostgres ? "DELETE FROM expenses WHERE id = $1::int AND shop_id = $2::int" : "DELETE FROM expenses WHERE id = ? AND shop_id = ?", req.params.id, req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Delete expense error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Daily Closing Report Route
+  app.get("/api/reports/daily-closing", authenticate, async (req: any, res) => {
+    try {
+      const shopId = req.user.shopId;
+      const date = req.query.date || new Date().toISOString().split('T')[0];
+
+      const salesByMethodSql = isPostgres
+        ? "SELECT payment_method, SUM(total_amount) as total, COUNT(*) as count FROM sales WHERE shop_id = $1::int AND created_at::date = $2::date GROUP BY payment_method"
+        : "SELECT payment_method, SUM(total_amount) as total, COUNT(*) as count FROM sales WHERE shop_id = ? AND date(created_at) = ? GROUP BY payment_method";
+
+      const expensesSql = isPostgres
+        ? "SELECT category, SUM(amount) as total FROM expenses WHERE shop_id = $1::int AND date::date = $2::date GROUP BY category"
+        : "SELECT category, SUM(amount) as total FROM expenses WHERE shop_id = ? AND date(date) = ? GROUP BY category";
+
+      const [salesByMethod, expenses] = await Promise.all([
+        db.all(salesByMethodSql, shopId, date),
+        db.all(expensesSql, shopId, date)
+      ]);
+
+      const totalSales = salesByMethod.reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+      const totalExpenses = expenses.reduce((sum: number, e: any) => sum + (e.total || 0), 0);
+
+      res.json({
+        date,
+        salesByMethod,
+        expenses,
+        totalSales,
+        totalExpenses,
+        netCash: totalSales - totalExpenses
+      });
+    } catch (e: any) {
+      console.error("Daily closing report error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/notifications/read-all", authenticate, async (req: any, res) => {
+    try {
+      await db.run(isPostgres ? "UPDATE notifications SET is_read = 1 WHERE shop_id = $1::int" : "UPDATE notifications SET is_read = 1 WHERE shop_id = ?", req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Read all notifications error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", authenticate, async (req: any, res) => {
+    try {
+      await db.run(isPostgres ? "UPDATE notifications SET is_read = 1 WHERE id = $1::int AND shop_id = $2::int" : "UPDATE notifications SET is_read = 1 WHERE id = ? AND shop_id = ?", req.params.id, req.user.shopId);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Read notification error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // API 404 handler - must be before Vite/Static middleware
+  app.use("/api", (req, res) => {
+    console.log(`API 404: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ 
+      error: "API route not found", 
+      method: req.method, 
+      path: req.originalUrl 
+    });
+  });
+
+  // Global Error Handler for API
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (req.path.startsWith('/api/')) {
+      console.error("API Error:", err);
+      return res.status(err.status || 500).json({ 
+        error: err.message || "Internal Server Error",
+        path: req.path
+      });
+    }
+    next(err);
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.join(__dirname, "dist")));
+    app.get("*", (req, res) => {
+      const indexPath = path.join(__dirname, "dist", "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("Frontend not built. Run npm run build.");
+      }
+    });
+  }
+
+  // Subscription Automation Task
+  const runSubscriptionAutomation = async () => {
+    console.log("[Automation] Running subscription checks...");
+    try {
+      const now = new Date();
+      const threeDaysFromNow = new Date(now.getTime() + (3 * 24 * 60 * 60 * 1000));
+      const oneMonthAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
+
+      const nowStr = now.toISOString().replace('T', ' ').replace('Z', '');
+      const threeDaysStr = threeDaysFromNow.toISOString().replace('T', ' ').replace('Z', '');
+      const oneMonthAgoStr = oneMonthAgo.toISOString().replace('T', ' ').replace('Z', '');
+
+      // 1. Reminders (3 days before)
+      const shopsToRemind = await db.all(
+        isPostgres 
+          ? "SELECT id, name FROM shops WHERE plan != 'free' AND status = 'active' AND subscription_expires_at <= $1::timestamp AND subscription_expires_at > $2::timestamp"
+          : "SELECT id, name FROM shops WHERE plan != 'free' AND status = 'active' AND subscription_expires_at <= ? AND subscription_expires_at > ?",
+        threeDaysStr, nowStr
+      );
+
+      for (const shop of shopsToRemind) {
+        await createNotification(
+          shop.id,
+          'SUBSCRIPTION_REMINDER',
+          'Rappel d\'abonnement',
+          `Votre abonnement expire dans moins de 3 jours. Veuillez renouveler pour éviter toute interruption.`
+        );
+      }
+
+      // 2. Expiry (Move to grace period)
+      const expiredShops = await db.all(
+        isPostgres
+          ? "SELECT id FROM shops WHERE plan != 'free' AND status = 'active' AND subscription_expires_at <= $1::timestamp"
+          : "SELECT id FROM shops WHERE plan != 'free' AND status = 'active' AND subscription_expires_at <= ?",
+        nowStr
+      );
+
+      for (const shop of expiredShops) {
+        await db.run(
+          isPostgres ? "UPDATE shops SET status = 'grace_period' WHERE id = $1::int" : "UPDATE shops SET status = 'grace_period' WHERE id = ?",
+          shop.id
+        );
+        await createNotification(
+          shop.id,
+          'SUBSCRIPTION_EXPIRED',
+          'Abonnement Expiré',
+          `Votre abonnement a expiré. Vous êtes maintenant en période de grâce de 30 jours avant la suppression de vos données.`
+        );
+        broadcastToShop(shop.id, { type: 'SUBSCRIPTION_EXPIRED', payload: { status: 'grace_period' } });
+      }
+
+      // 3. Deletion (After 1 month of grace period)
+      const shopsToDelete = await db.all(
+        isPostgres
+          ? "SELECT id FROM shops WHERE status = 'grace_period' AND subscription_expires_at <= $1::timestamp"
+          : "SELECT id FROM shops WHERE status = 'grace_period' AND subscription_expires_at <= ?",
+        oneMonthAgoStr
+      );
+
+      for (const shop of shopsToDelete) {
+        console.log(`[Automation] Deleting shop ${shop.id} due to long-term expiry`);
+        await db.transaction(async () => {
+          await db.run(isPostgres ? "DELETE FROM shops WHERE id = $1::int" : "DELETE FROM shops WHERE id = ?", shop.id);
+        });
+      }
+
+    } catch (err) {
+      console.error("[Automation] Error in subscription automation:", err);
+    }
+  };
+
+  // Run every 24 hours
+  setInterval(runSubscriptionAutomation, 24 * 60 * 60 * 1000);
+  // Also run once on startup after a short delay
+  setTimeout(runSubscriptionAutomation, 10000);
+
+  const PORT = 3000;
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Database mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
+    if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+      console.warn("⚠️ WARNING: JWT_SECRET is missing. Using default secret. Set it in Settings for security.");
+    }
+  });
+}
+
+if (!process.env.VERCEL) {
+  startServer();
+}

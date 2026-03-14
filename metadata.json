@@ -1,0 +1,5 @@
+{
+  "name": "ShopMaster Pro",
+  "description": "Solution professionnelle de gestion de stock, ventes et intelligence artificielle pour commerces modernes.",
+  "requestFramePermissions": ["camera"]
+}
