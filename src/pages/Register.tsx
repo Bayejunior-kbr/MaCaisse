@@ -58,15 +58,24 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
-      console.log("Register response data:", data);
-      if (res.ok) {
-        onLogin(data.user, data.token);
-      } else {
-        setError(data.error || "Erreur lors de l'inscription");
+      
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          const data = await res.json();
+          setError(data.error || `Erreur ${res.status}: ${res.statusText}`);
+        } else {
+          const text = await res.text();
+          setError(`Erreur ${res.status}: ${text.substring(0, 100)}`);
+        }
+        return;
       }
-    } catch (err) {
-      setError('Erreur réseau');
+
+      const data = await res.json();
+      onLogin(data.user, data.token);
+    } catch (err: any) {
+      console.error("Register error:", err);
+      setError(`Erreur de connexion au serveur. Veuillez vérifier votre connexion internet ou si le serveur est en ligne. (${err.message})`);
     } finally {
       setLoading(false);
     }

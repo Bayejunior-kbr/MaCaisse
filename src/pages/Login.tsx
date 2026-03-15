@@ -21,15 +21,24 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      console.log("Login response data:", data);
-      if (res.ok) {
-        onLogin(data.user, data.token);
-      } else {
-        setError(data.error || 'Erreur de connexion');
+      
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          const data = await res.json();
+          setError(data.error || `Erreur ${res.status}: ${res.statusText}`);
+        } else {
+          const text = await res.text();
+          setError(`Erreur ${res.status}: ${text.substring(0, 100)}`);
+        }
+        return;
       }
-    } catch (err) {
-      setError('Erreur réseau');
+
+      const data = await res.json();
+      onLogin(data.user, data.token);
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(`Erreur de connexion au serveur. (${err.message})`);
     } finally {
       setLoading(false);
     }

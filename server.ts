@@ -38,18 +38,32 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Database Initialization
-const isPostgres = !!(process.env.SUPABASE_URL || process.env.DATABASE_URL);
+const dbUrl = process.env.SUPABASE_URL || process.env.DATABASE_URL;
+const isPostgres = !!dbUrl;
 let sqliteDb: any;
 let pool: any;
 
 if (isPostgres) {
   console.log("Using PostgreSQL database");
+  if (dbUrl?.includes("supabase")) {
+    console.log("Detected Supabase connection string");
+  }
   pool = new Pool({
-    connectionString: process.env.SUPABASE_URL || process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 10000, // 10s timeout
+  });
+  
+  pool.on('error', (err: any) => {
+    console.error('Unexpected error on idle client', err);
   });
 } else {
   console.log("Using SQLite database");
+  if (process.env.VERCEL) {
+    console.error("❌ CRITICAL: Running on Vercel but DATABASE_URL is missing! SQLite will not work correctly.");
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn("⚠️ WARNING: Running SQLite in production. Data will be lost on restart.");
+  }
   sqliteDb = new Database("smartstock.db");
   sqliteDb.pragma('foreign_keys = ON');
 }
@@ -156,6 +170,18 @@ const db = {
 
 // Initialize Database Tables
 const initDb = async () => {
+  if (isPostgres) {
+    try {
+      console.log("Testing PostgreSQL connection...");
+      const client = await pool.connect();
+      console.log("PostgreSQL connection successful!");
+      client.release();
+    } catch (err: any) {
+      console.error("CRITICAL: Failed to connect to PostgreSQL:", err.message);
+      throw new Error(`Database connection failed: ${err.message}`);
+    }
+  }
+
   // Check if database is already initialized to speed up serverless cold starts
   try {
     const tableExists = await db.get(isPostgres 
