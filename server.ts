@@ -45,8 +45,12 @@ let sqliteDb: any;
 let pool: any;
 
 const getSqliteDb = () => {
+  if (isPostgres) return null;
   if (!sqliteDb) {
     try {
+      if (process.env.VERCEL) {
+        throw new Error("SQLite is not supported in this environment. Please configure DATABASE_URL for PostgreSQL.");
+      }
       // Lazy load better-sqlite3 to avoid crashes on environments where it's not supported (like Vercel)
       // if we are actually using PostgreSQL.
       const Database = require("better-sqlite3");
@@ -504,11 +508,16 @@ const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STR);
 
 // Initialize Firebase Admin (for token verification)
 try {
-  const firebaseConfig = JSON.parse(fs.readFileSync(path.join(__dirname, "firebase-applet-config.json"), "utf8"));
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
-  console.log("Firebase Admin initialized");
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+    console.log("Firebase Admin initialized");
+  } else {
+    console.warn("firebase-applet-config.json not found, skipping Firebase Admin init");
+  }
 } catch (e) {
   console.error("Failed to initialize Firebase Admin:", e);
 }
@@ -652,46 +661,15 @@ app.get("/api/health-db", async (req, res) => {
   }
 });
 
-async function startServer() {
-  const server = http.createServer(app);
-  // WebSockets only work in long-running server environments, not Vercel Serverless
-  const wss = new WebSocketServer({ server });
+// Middleware and Routes
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  wss.on('connection', (ws, req) => {
-    const url = new URL(req.url || '', `http://${req.headers.host}`);
-    const token = url.searchParams.get('token');
+// Serve static files
+app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
 
-    if (!token) {
-      ws.close();
-      return;
-    }
-
-    jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
-      const shopId = payload.shopId;
-      if (!clients.has(shopId)) {
-        clients.set(shopId, new Set());
-      }
-      clients.get(shopId)!.add(ws);
-
-      ws.on('close', () => {
-        clients.get(shopId)?.delete(ws);
-        if (clients.get(shopId)?.size === 0) {
-          clients.delete(shopId);
-        }
-      });
-    }).catch(() => {
-      ws.close();
-    });
-  });
-
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
-  
-  // Serve static files
-  app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
-
-  // Auth Middleware
-  const authenticate = async (req: any, res: any, next: any) => {
+// Auth Middleware
+const authenticate = async (req: any, res: any, next: any) => {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -2260,7 +2238,8 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  async function startServerSetup() {
+    if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -2350,20 +2329,51 @@ async function startServer() {
   };
 
   // Run every 24 hours
-  setInterval(runSubscriptionAutomation, 24 * 60 * 60 * 1000);
-  // Also run once on startup after a short delay
-  setTimeout(runSubscriptionAutomation, 10000);
+  if (!process.env.VERCEL) {
+    setInterval(runSubscriptionAutomation, 24 * 60 * 60 * 1000);
+    // Also run once on startup after a short delay
+    setTimeout(runSubscriptionAutomation, 10000);
 
-  const PORT = 3000;
-  server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    console.log(`Database mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
-    if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-      console.warn("⚠️ WARNING: JWT_SECRET is missing. Using default secret. Set it in Settings for security.");
-    }
-  });
+    const server = http.createServer(app);
+    const wss = new WebSocketServer({ server });
+
+    wss.on('connection', (ws, req) => {
+      const url = new URL(req.url || '', `http://${req.headers.host}`);
+      const token = url.searchParams.get('token');
+
+      if (!token) {
+        ws.close();
+        return;
+      }
+
+      jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
+        const shopId = payload.shopId;
+        if (!clients.has(shopId)) {
+          clients.set(shopId, new Set());
+        }
+        clients.get(shopId)!.add(ws);
+
+        ws.on('close', () => {
+          clients.get(shopId)?.delete(ws);
+          if (clients.get(shopId)?.size === 0) {
+            clients.delete(shopId);
+          }
+        });
+      }).catch(() => {
+        ws.close();
+      });
+    });
+
+    const PORT = 3000;
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://0.0.0.0:${PORT}`);
+      console.log(`Database mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
+      if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+        console.warn("⚠️ WARNING: JWT_SECRET is missing. Using default secret. Set it in Settings for security.");
+      }
+    });
+  }
 }
 
-if (!process.env.VERCEL) {
-  startServer();
-}
+// Start the server setup (top-level await)
+await startServerSetup();
