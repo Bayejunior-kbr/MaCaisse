@@ -44,6 +44,9 @@ const isPostgres = !!dbUrl;
 let sqliteDb: any;
 let pool: any;
 
+let dbInitPromise: Promise<void> | null = null;
+let dbInitialized = false;
+
 const getSqliteDb = () => {
   if (isPostgres) return null;
   if (!sqliteDb) {
@@ -199,14 +202,23 @@ const db = {
 const initDb = async () => {
   if (dbInitialized) return;
   
+  console.log(`[DB] Initializing... Mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
+  
   if (isPostgres) {
     try {
+      console.log("[DB] Connecting to pool...");
       const client = await pool.connect();
+      console.log("[DB] Connected to PostgreSQL");
       client.release();
     } catch (err: any) {
       console.error("CRITICAL: Failed to connect to PostgreSQL:", err.message);
+      // On Vercel, we want to fail fast but maybe allow retry
+      dbInitPromise = null;
       throw new Error(`Database connection failed: ${err.message}`);
     }
+  } else if (process.env.VERCEL) {
+    console.error("CRITICAL: SQLite is not supported on Vercel. Please set DATABASE_URL.");
+    throw new Error("SQLite not supported on Vercel");
   }
 
   try {
@@ -215,7 +227,7 @@ const initDb = async () => {
       : "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shops'");
     
     if (!tableExists) {
-      console.log("Initializing database schema...");
+      console.log("[DB] Initializing database schema...");
       const schema = `
         CREATE TABLE IF NOT EXISTS shops (
           id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
@@ -422,18 +434,25 @@ const initDb = async () => {
         { table: "customers", column: "address", type: "TEXT" },
       ];
 
+      // Get all existing columns in one query
+      const tables = [...new Set(migrations.map(m => m.table))];
+      const existingColsRes = await pool.query(`
+        SELECT table_name, column_name 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = ANY($1::text[])
+      `, [tables]);
+      
+      const existingCols = new Set(existingColsRes.rows.map((r: any) => `${r.table_name}.${r.column_name}`));
+
       for (const m of migrations) {
-        try {
-          const checkSql = `
-            SELECT 1 
-            FROM information_schema.columns 
-            WHERE table_name = $1 AND column_name = $2 AND table_schema = 'public'
-          `;
-          const res = await pool.query(checkSql, [m.table, m.column]);
-          if (res.rowCount === 0) {
+        if (!existingCols.has(`${m.table}.${m.column}`)) {
+          console.log(`[DB] Adding missing column ${m.column} to ${m.table}`);
+          try {
             await pool.query(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type}`);
+          } catch (e: any) {
+            console.warn(`[DB] Failed to add column ${m.column} to ${m.table}:`, e.message);
           }
-        } catch (e) {}
+        }
       }
     } else {
       const sqliteMigrations = [
@@ -614,14 +633,29 @@ const logAdminAction = async (userId: number, action: string, details: string, i
   }
 };
 
-let dbInitialized = false;
 app.use(async (req, res, next) => {
-  if (!dbInitialized && req.path.startsWith('/api')) {
-    try {
-      await initDb();
-      dbInitialized = true;
-    } catch (err) {
-      console.error("Database initialization failed:", err);
+  if (req.path.startsWith('/api')) {
+    if (!dbInitialized) {
+      if (!dbInitPromise) {
+        console.log(`[Init] Starting DB initialization for request: ${req.path}`);
+        dbInitPromise = initDb().then(() => {
+          dbInitialized = true;
+          console.log("[Init] DB initialization complete");
+        }).catch(err => {
+          console.error("[Init] DB initialization failed:", err);
+          dbInitPromise = null; // Allow retry on next request
+          throw err;
+        });
+      }
+      
+      try {
+        await dbInitPromise;
+      } catch (err: any) {
+        return res.status(500).json({ 
+          error: "Database initialization failed", 
+          details: err.message 
+        });
+      }
     }
   }
   next();
@@ -2366,6 +2400,8 @@ const authenticate = async (req: any, res: any, next: any) => {
 }
 
 // Start the server setup (top-level await)
-await startServerSetup();
+if (!process.env.VERCEL) {
+  await startServerSetup();
+}
 
 export default app;
