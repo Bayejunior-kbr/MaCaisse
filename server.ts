@@ -197,11 +197,11 @@ const db = {
 
 // Initialize Database Tables
 const initDb = async () => {
+  if (dbInitialized) return;
+  
   if (isPostgres) {
     try {
-      console.log("Testing PostgreSQL connection...");
       const client = await pool.connect();
-      console.log("PostgreSQL connection successful!");
       client.release();
     } catch (err: any) {
       console.error("CRITICAL: Failed to connect to PostgreSQL:", err.message);
@@ -209,15 +209,12 @@ const initDb = async () => {
     }
   }
 
-  // Check if database is already initialized to speed up serverless cold starts
   try {
     const tableExists = await db.get(isPostgres 
       ? "SELECT 1 FROM information_schema.tables WHERE table_name = 'shops' AND table_schema = 'public'" 
       : "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shops'");
     
-    if (tableExists) {
-      console.log("Database tables already exist. Running migrations and admin check...");
-    } else {
+    if (!tableExists) {
       console.log("Initializing database schema...");
       const schema = `
         CREATE TABLE IF NOT EXISTS shops (
@@ -390,117 +387,111 @@ const initDb = async () => {
       console.log("Database schema initialized.");
     }
   } catch (e: any) {
-    console.log("Database initialization check or schema creation failed:", e.message);
+    console.log("Database initialization failed:", e.message);
   }
 
-  // Migration for new columns
+  // Migration for new columns - only run if needed
   try {
     if (isPostgres) {
-      await db.exec("ALTER TABLE users ALTER COLUMN shop_id DROP NOT NULL");
+      const migrations = [
+        { table: "shops", column: "show_tax", type: "INTEGER DEFAULT 0" },
+        { table: "shops", column: "sms_enabled", type: "INTEGER DEFAULT 0" },
+        { table: "shops", column: "whatsapp_enabled", type: "INTEGER DEFAULT 0" },
+        { table: "shops", column: "notification_template", type: "TEXT" },
+        { table: "shops", column: "status", type: "TEXT DEFAULT 'active'" },
+        { table: "shops", column: "is_signaled", type: "INTEGER DEFAULT 0" },
+        { table: "shops", column: "subscription_expires_at", type: "TIMESTAMP" },
+        { table: "shops", column: "has_ai_features", type: "INTEGER DEFAULT 0" },
+        { table: "sales", column: "discount_amount", type: "REAL DEFAULT 0" },
+        { table: "products", column: "category_id", type: "INTEGER REFERENCES categories(id) ON DELETE SET NULL" },
+        { table: "products", column: "barcode", type: "TEXT" },
+        { table: "products", column: "image_url", type: "TEXT" },
+        { table: "products", column: "min_quantity", type: "INTEGER DEFAULT 5" },
+        { table: "products", column: "supplier_id", type: "INTEGER REFERENCES suppliers(id) ON DELETE SET NULL" },
+        { table: "sales", column: "total_profit", type: "REAL DEFAULT 0" },
+        { table: "sales", column: "tax_amount", type: "REAL DEFAULT 0" },
+        { table: "sale_items", column: "unit_profit", type: "REAL DEFAULT 0" },
+        { table: "sales", column: "user_id", type: "INTEGER REFERENCES users(id) ON DELETE CASCADE" },
+        { table: "sales", column: "customer_id", type: "INTEGER REFERENCES customers(id) ON DELETE SET NULL" },
+        { table: "sales", column: "payment_method", type: "TEXT DEFAULT 'cash'" },
+        { table: "sales", column: "amount_paid", type: "REAL DEFAULT 0" },
+        { table: "sales", column: "payment_status", type: "TEXT DEFAULT 'paid'" },
+        { table: "customers", column: "total_debt", type: "REAL DEFAULT 0" },
+        { table: "customers", column: "phone", type: "TEXT" },
+        { table: "customers", column: "email", type: "TEXT" },
+        { table: "customers", column: "address", type: "TEXT" },
+      ];
+
+      for (const m of migrations) {
+        try {
+          const checkSql = `
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = $1 AND column_name = $2 AND table_schema = 'public'
+          `;
+          const res = await pool.query(checkSql, [m.table, m.column]);
+          if (res.rowCount === 0) {
+            await pool.query(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type}`);
+          }
+        } catch (e) {}
+      }
+    } else {
+      const sqliteMigrations = [
+        "ALTER TABLE shops ADD COLUMN show_tax INTEGER DEFAULT 0",
+        "ALTER TABLE shops ADD COLUMN sms_enabled INTEGER DEFAULT 0",
+        "ALTER TABLE shops ADD COLUMN whatsapp_enabled INTEGER DEFAULT 0",
+        "ALTER TABLE shops ADD COLUMN notification_template TEXT",
+        "ALTER TABLE shops ADD COLUMN status TEXT DEFAULT 'active'",
+        "ALTER TABLE shops ADD COLUMN is_signaled INTEGER DEFAULT 0",
+        "ALTER TABLE shops ADD COLUMN subscription_expires_at DATETIME",
+        "ALTER TABLE shops ADD COLUMN has_ai_features INTEGER DEFAULT 0",
+        "ALTER TABLE sales ADD COLUMN discount_amount REAL DEFAULT 0",
+        "ALTER TABLE products ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL",
+        "ALTER TABLE products ADD COLUMN barcode TEXT",
+        "ALTER TABLE products ADD COLUMN image_url TEXT",
+        "ALTER TABLE products ADD COLUMN min_quantity INTEGER DEFAULT 5",
+        "ALTER TABLE products ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL",
+        "ALTER TABLE sales ADD COLUMN total_profit REAL DEFAULT 0",
+        "ALTER TABLE sales ADD COLUMN tax_amount REAL DEFAULT 0",
+        "ALTER TABLE sale_items ADD COLUMN unit_profit REAL DEFAULT 0",
+        "ALTER TABLE sales ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE sales ADD COLUMN customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL",
+        "ALTER TABLE sales ADD COLUMN payment_method TEXT DEFAULT 'cash'",
+        "ALTER TABLE sales ADD COLUMN amount_paid REAL DEFAULT 0",
+        "ALTER TABLE sales ADD COLUMN payment_status TEXT DEFAULT 'paid'",
+        "ALTER TABLE customers ADD COLUMN total_debt REAL DEFAULT 0",
+        "ALTER TABLE customers ADD COLUMN phone TEXT",
+        "ALTER TABLE customers ADD COLUMN email TEXT",
+        "ALTER TABLE customers ADD COLUMN address TEXT",
+      ];
+      for (const sql of sqliteMigrations) {
+        try { await db.run(sql); } catch (e) {}
+      }
     }
   } catch (e) {}
 
-  // Migrations
-  const addColumnIfNotExists = async (table: string, column: string, type: string) => {
-    if (isPostgres) {
-      try {
-        const checkSql = `
-          SELECT 1 
-          FROM information_schema.columns 
-          WHERE table_name = $1 AND column_name = $2 AND table_schema = 'public'
-        `;
-        const res = await pool.query(checkSql, [table, column]);
-        if (res.rowCount === 0) {
-          await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-          console.log(`Added column ${column} to ${table}`);
-        }
-      } catch (e: any) {
-        console.error(`Error adding column ${column} to ${table}:`, e.message);
-      }
-    } else {
-      try {
-        await db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-      } catch (e) {}
-    }
-  };
-
-  await addColumnIfNotExists("shops", "show_tax", "INTEGER DEFAULT 0");
-  await addColumnIfNotExists("shops", "sms_enabled", "INTEGER DEFAULT 0");
-  await addColumnIfNotExists("shops", "whatsapp_enabled", "INTEGER DEFAULT 0");
-  await addColumnIfNotExists("shops", "notification_template", "TEXT");
-  await addColumnIfNotExists("shops", "status", "TEXT DEFAULT 'active'");
-  await addColumnIfNotExists("shops", "is_signaled", "INTEGER DEFAULT 0");
-  await addColumnIfNotExists("shops", "subscription_expires_at", isPostgres ? "TIMESTAMP" : "DATETIME");
-  await addColumnIfNotExists("shops", "has_ai_features", "INTEGER DEFAULT 0");
-  await addColumnIfNotExists("sales", "discount_amount", "REAL DEFAULT 0");
-  await addColumnIfNotExists("products", "category_id", "INTEGER REFERENCES categories(id) ON DELETE SET NULL");
-  await addColumnIfNotExists("products", "barcode", "TEXT");
-  await addColumnIfNotExists("products", "image_url", "TEXT");
-  await addColumnIfNotExists("products", "min_quantity", "INTEGER DEFAULT 5");
-  await addColumnIfNotExists("products", "supplier_id", "INTEGER REFERENCES suppliers(id) ON DELETE SET NULL");
-  await addColumnIfNotExists("sales", "total_profit", "REAL DEFAULT 0");
-  await addColumnIfNotExists("sales", "tax_amount", "REAL DEFAULT 0");
-  await addColumnIfNotExists("sale_items", "unit_profit", "REAL DEFAULT 0");
-  await addColumnIfNotExists("sales", "user_id", "INTEGER REFERENCES users(id) ON DELETE CASCADE");
-  await addColumnIfNotExists("sales", "customer_id", "INTEGER REFERENCES customers(id) ON DELETE SET NULL");
-  await addColumnIfNotExists("sales", "payment_method", "TEXT DEFAULT 'cash'");
-  await addColumnIfNotExists("sales", "amount_paid", "REAL DEFAULT 0");
-  await addColumnIfNotExists("sales", "payment_status", "TEXT DEFAULT 'paid'");
-  await addColumnIfNotExists("customers", "total_debt", "REAL DEFAULT 0");
-  await addColumnIfNotExists("customers", "phone", "TEXT");
-  await addColumnIfNotExists("customers", "email", "TEXT");
-  await addColumnIfNotExists("customers", "address", "TEXT");
-
-  // Ensure baye@gmail.com is admin and has no shop_id (global admin)
+  // Ensure admin user exists
   try {
+    const adminEmail = "kobarbayedame6@gmail.com";
+    const existingAdmin = await db.get("SELECT id FROM users WHERE email = ?", adminEmail);
+    if (!existingAdmin) {
+      console.log("Creating default admin account...");
+      const passwordHash = await bcrypt.hash("admin123", 10);
+      await db.run(
+        isPostgres 
+          ? "INSERT INTO users (name, email, password_hash, role) VALUES ($1::text, $2::text, $3::text, $4::text)" 
+          : "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+        "Administrateur", adminEmail, passwordHash, "admin"
+      );
+    }
+    
+    // Also ensure baye@gmail.com is admin
     await db.run(isPostgres 
       ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
       : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", 'baye@gmail.com');
-    
-    // Bootstrap default admin if no users exist
-    const userCount = await db.get(isPostgres ? "SELECT COUNT(*) as count FROM users" : "SELECT COUNT(*) as count FROM users");
-    const count = isPostgres ? parseInt(userCount.count) : userCount.count;
-    
-    if (count === 0) {
-      console.log("No users found. Bootstrapping default admin...");
-      const defaultPasswordHash = await bcrypt.hash("admin123", 10);
-      await db.run(
-        isPostgres 
-          ? "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES ($1::text, $2::text, $3::text, $4::text, NULL)"
-          : "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES (?, ?, ?, ?, NULL)",
-        "Admin", "baye@gmail.com", defaultPasswordHash, "admin"
-      );
-      console.log("Default admin created: baye@gmail.com / admin123");
-    } else {
-      // Check if baye@gmail.com exists, if not create it
-      const adminUser = await db.get(isPostgres ? "SELECT * FROM users WHERE email = $1::text" : "SELECT * FROM users WHERE email = ?", 'baye@gmail.com');
-      if (!adminUser) {
-        console.log("Admin user baye@gmail.com not found. Creating...");
-        const defaultPasswordHash = await bcrypt.hash("admin123", 10);
-        await db.run(
-          isPostgres 
-            ? "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES ($1::text, $2::text, $3::text, $4::text, NULL)"
-            : "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES (?, ?, ?, ?, NULL)",
-          "Admin", "baye@gmail.com", defaultPasswordHash, "admin"
-        );
-        console.log("Admin user baye@gmail.com created.");
-      }
-    }
+  } catch (e) {}
 
-    // Initialize platform settings
-    try {
-      const maintenance = await db.get(isPostgres ? "SELECT * FROM platform_settings WHERE key = $1::text" : "SELECT * FROM platform_settings WHERE key = ?", 'maintenance_mode');
-      if (!maintenance) {
-        await db.run(isPostgres ? "INSERT INTO platform_settings (key, value) VALUES ($1::text, $2::text)" : "INSERT INTO platform_settings (key, value) VALUES (?, ?)", 'maintenance_mode', 'false');
-      }
-      const alertEmail = await db.get(isPostgres ? "SELECT * FROM platform_settings WHERE key = $1::text" : "SELECT * FROM platform_settings WHERE key = ?", 'admin_alert_email');
-      if (!alertEmail) {
-        await db.run(isPostgres ? "INSERT INTO platform_settings (key, value) VALUES ($1::text, $2::text)" : "INSERT INTO platform_settings (key, value) VALUES (?, ?)", 'admin_alert_email', 'kobarbayedame6@gmail.com');
-      }
-    } catch (e) {}
-  } catch (e) {
-    console.error("Error updating admin roles:", e);
-  }
+  dbInitialized = true;
 };
 
 const JWT_SECRET_STR = process.env.JWT_SECRET || "smartstock-senegal-secret-key-2024";
@@ -570,7 +561,6 @@ function formatNotificationMessage(template: string, data: { customer_name: stri
 }
 
 const app = express();
-export default app;
 
 // Store active WS connections by shopId
 const clients = new Map<number, Set<WebSocket>>();
@@ -2377,3 +2367,5 @@ const authenticate = async (req: any, res: any, next: any) => {
 
 // Start the server setup (top-level await)
 await startServerSetup();
+
+export default app;
