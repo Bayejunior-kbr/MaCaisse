@@ -156,6 +156,20 @@ const db = {
 
 // Initialize Database Tables
 const initDb = async () => {
+  // Check if database is already initialized to speed up serverless cold starts
+  try {
+    const tableExists = await db.get(isPostgres 
+      ? "SELECT 1 FROM information_schema.tables WHERE table_name = 'shops' AND table_schema = 'public'" 
+      : "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shops'");
+    
+    if (tableExists) {
+      console.log("Database already initialized, skipping schema creation.");
+      return;
+    }
+  } catch (e) {
+    console.log("Checking for tables failed, proceeding with initialization...");
+  }
+
   const schema = `
     CREATE TABLE IF NOT EXISTS shops (
       id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
@@ -401,6 +415,22 @@ const initDb = async () => {
       ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
       : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", 'baye@gmail.com');
     
+    // Bootstrap default admin if no users exist
+    const userCount = await db.get(isPostgres ? "SELECT COUNT(*) as count FROM users" : "SELECT COUNT(*) as count FROM users");
+    const count = isPostgres ? parseInt(userCount.count) : userCount.count;
+    
+    if (count === 0) {
+      console.log("No users found. Bootstrapping default admin...");
+      const defaultPasswordHash = await bcrypt.hash("admin123", 10);
+      await db.run(
+        isPostgres 
+          ? "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES ($1::text, $2::text, $3::text, $4::text, NULL)"
+          : "INSERT INTO users (name, email, password_hash, role, shop_id) VALUES (?, ?, ?, ?, NULL)",
+        "Admin", "baye@gmail.com", defaultPasswordHash, "admin"
+      );
+      console.log("Default admin created: baye@gmail.com / admin123");
+    }
+
     // Initialize platform settings
     try {
       const maintenance = await db.get(isPostgres ? "SELECT * FROM platform_settings WHERE key = $1::text" : "SELECT * FROM platform_settings WHERE key = ?", 'maintenance_mode');
@@ -544,6 +574,30 @@ app.use(async (req, res, next) => {
     }
   }
   next();
+});
+
+// Health check endpoints
+app.get("/api/health", async (req, res) => {
+  try {
+    const result = await db.get(isPostgres ? "SELECT 1 as ok" : "SELECT 1 as ok");
+    res.json({ 
+      status: "ok", 
+      database: isPostgres ? "PostgreSQL" : "SQLite",
+      db_connection: !!result,
+      env: process.env.NODE_ENV
+    });
+  } catch (e: any) {
+    res.status(500).json({ status: "error", message: e.message });
+  }
+});
+
+app.get("/api/health-db", async (req, res) => {
+  try {
+    await initDb();
+    res.json({ status: "Database initialized successfully" });
+  } catch (e: any) {
+    res.status(500).json({ status: "Database initialization failed", error: e.message });
+  }
 });
 
 async function startServer() {
