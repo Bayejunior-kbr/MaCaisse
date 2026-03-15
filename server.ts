@@ -3,7 +3,8 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import Database from "better-sqlite3";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -42,6 +43,22 @@ const dbUrl = process.env.SUPABASE_URL || process.env.DATABASE_URL;
 const isPostgres = !!dbUrl;
 let sqliteDb: any;
 let pool: any;
+
+const getSqliteDb = () => {
+  if (!sqliteDb) {
+    try {
+      // Lazy load better-sqlite3 to avoid crashes on environments where it's not supported (like Vercel)
+      // if we are actually using PostgreSQL.
+      const Database = require("better-sqlite3");
+      sqliteDb = new Database("smartstock.db");
+      sqliteDb.pragma('foreign_keys = ON');
+    } catch (err: any) {
+      console.error("Failed to initialize SQLite:", err.message);
+      throw new Error("SQLite is not supported in this environment. Please configure DATABASE_URL for PostgreSQL.");
+    }
+  }
+  return sqliteDb;
+};
 
 if (isPostgres) {
   console.log("Using PostgreSQL database");
@@ -86,8 +103,8 @@ const db = {
         throw err;
       }
     } else {
-      if (!sqliteDb) throw new Error("SQLite database not initialized");
-      return sqliteDb.prepare(sql).get(...actualParams);
+      const sdb = getSqliteDb();
+      return sdb.prepare(sql).get(...actualParams);
     }
   },
   all: async (sql: string, ...params: any[]) => {
@@ -105,8 +122,8 @@ const db = {
         throw err;
       }
     } else {
-      if (!sqliteDb) throw new Error("SQLite database not initialized");
-      return sqliteDb.prepare(sql).all(...actualParams);
+      const sdb = getSqliteDb();
+      return sdb.prepare(sql).all(...actualParams);
     }
   },
   run: async (sql: string, ...params: any[]) => {
@@ -128,8 +145,8 @@ const db = {
         throw err;
       }
     } else {
-      if (!sqliteDb) throw new Error("SQLite database not initialized");
-      return sqliteDb.prepare(sql).run(...actualParams);
+      const sdb = getSqliteDb();
+      return sdb.prepare(sql).run(...actualParams);
     }
   },
   exec: async (sql: string) => {
@@ -137,7 +154,8 @@ const db = {
     if (isPostgres) {
       return await (client || pool).query(sql);
     } else {
-      return sqliteDb.exec(sql);
+      const sdb = getSqliteDb();
+      return sdb.exec(sql);
     }
   },
   transaction: async (fn: () => Promise<void>) => {
@@ -156,12 +174,13 @@ const db = {
         client.release();
       }
     } else {
-      sqliteDb.exec('BEGIN');
+      const sdb = getSqliteDb();
+      sdb.exec('BEGIN');
       try {
         await fn();
-        sqliteDb.exec('COMMIT');
+        sdb.exec('COMMIT');
       } catch (e) {
-        sqliteDb.exec('ROLLBACK');
+        sdb.exec('ROLLBACK');
         throw e;
       }
     }
