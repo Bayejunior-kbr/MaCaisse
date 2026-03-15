@@ -81,8 +81,12 @@ if (isPostgres) {
   } else if (process.env.NODE_ENV === 'production') {
     console.warn("⚠️ WARNING: Running SQLite in production. Data will be lost on restart.");
   }
-  sqliteDb = new Database("smartstock.db");
-  sqliteDb.pragma('foreign_keys = ON');
+  // Use lazy loader to avoid crashes if better-sqlite3 is not available
+  try {
+    getSqliteDb();
+  } catch (e) {
+    console.error("SQLite initialization failed during startup.");
+  }
 }
 
 const transactionStorage = new AsyncLocalStorage<any>();
