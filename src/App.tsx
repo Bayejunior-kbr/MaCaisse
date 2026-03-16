@@ -298,7 +298,7 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
     }
   };
 
-  if (user.email === 'baye@gmail.com') {
+  if (user.role === 'admin') {
     return <Navigate to="/admin" />;
   }
 
@@ -390,9 +390,6 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
                 <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Pro</span>
                 <SubscriptionTimer className="hidden md:flex" />
               </div>
-            )}
-            {user.role === 'admin' && (
-              <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Admin</span>
             )}
           </div>
 
@@ -642,7 +639,7 @@ export default function App() {
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', token);
     setUser(userData);
-    if (userData.email === 'baye@gmail.com') {
+    if (userData.role === 'admin') {
       navigate('/admin');
     } else {
       navigate('/');
@@ -718,7 +715,7 @@ export default function App() {
         <Routes>
         <Route path="/" element={
           user ? (
-            user.email === 'baye@gmail.com' ? (
+            user.role === 'admin' ? (
               <Navigate to="/admin" />
             ) : (
               <Layout user={user} onLogout={handleLogout}>

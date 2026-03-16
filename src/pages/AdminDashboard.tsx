@@ -939,7 +939,7 @@ export default function AdminDashboard() {
                     <td className="px-6 py-4 text-right">
                       <button 
                         onClick={() => setConfirmDelete({ type: 'user', id: u.id })}
-                        disabled={processingUserId === u.id || u.email === 'baye@gmail.com'}
+                        disabled={processingUserId === u.id || ['baye@gmail.com', 'kobarbayedame6@gmail.com'].includes(u.email)}
                         className="p-2 bg-slate-100 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all disabled:opacity-30 opacity-0 group-hover:opacity-100"
                         title="Supprimer l'utilisateur"
                       >
@@ -992,7 +992,7 @@ export default function AdminDashboard() {
                   <span className="text-[10px] text-slate-400">Inscrit le {new Date(u.created_at).toLocaleDateString()}</span>
                   <button 
                     onClick={() => setConfirmDelete({ type: 'user', id: u.id })}
-                    disabled={processingUserId === u.id || u.email === 'baye@gmail.com'}
+                    disabled={processingUserId === u.id || ['baye@gmail.com', 'kobarbayedame6@gmail.com'].includes(u.email)}
                     className="p-2 bg-slate-100 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all"
                   >
                     <Trash2 size={18} />

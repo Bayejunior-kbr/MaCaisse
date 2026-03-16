@@ -546,7 +546,7 @@ const initDb = async () => {
   // Ensure admin user exists
   try {
     const adminEmail = "kobarbayedame6@gmail.com";
-    const existingAdmin = await db.get("SELECT id FROM users WHERE email = ?", adminEmail);
+    const existingAdmin = await db.get(isPostgres ? "SELECT id, role FROM users WHERE email = $1::text" : "SELECT id, role FROM users WHERE email = ?", adminEmail);
     if (!existingAdmin) {
       console.log("Creating default admin account...");
       const passwordHash = await bcrypt.hash("admin123", 10);
@@ -556,13 +556,20 @@ const initDb = async () => {
           : "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
         "Administrateur", adminEmail, passwordHash, "admin"
       );
+    } else if (existingAdmin.role !== 'admin') {
+      console.log(`Promoting ${adminEmail} to admin...`);
+      await db.run(isPostgres 
+        ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
+        : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", adminEmail);
     }
     
     // Also ensure baye@gmail.com is admin
     await db.run(isPostgres 
       ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
       : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", 'baye@gmail.com');
-  } catch (e) {}
+  } catch (e) {
+    console.error("Failed to ensure admin user:", e);
+  }
 
   dbInitialized = true;
 };
@@ -977,6 +984,9 @@ const authenticate = async (req: any, res: any, next: any) => {
 
       if (!email) return res.status(400).json({ error: "Email non fourni par Google" });
 
+      // Special case: kobarbayedame6@gmail.com is always an admin
+      const isAdminEmail = email === "kobarbayedame6@gmail.com";
+
       // Check if user exists
       let user = await db.get(isPostgres 
         ? "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
@@ -984,15 +994,22 @@ const authenticate = async (req: any, res: any, next: any) => {
 
       if (!user) {
         // Create new shop and user if not exists
-        const shopName = `Boutique de ${name || email.split('@')[0]}`;
-        const shopResult = await db.run(isPostgres ? "INSERT INTO shops (name) VALUES ($1::text) RETURNING id" : "INSERT INTO shops (name) VALUES (?)", shopName);
-        const shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
+        // If admin email, they don't get a shop by default
+        let shopId = null;
+        let shopName = null;
+        let role = isAdminEmail ? "admin" : "owner";
+
+        if (!isAdminEmail) {
+          shopName = `Boutique de ${name || email.split('@')[0]}`;
+          const shopResult = await db.run(isPostgres ? "INSERT INTO shops (name) VALUES ($1::text) RETURNING id" : "INSERT INTO shops (name) VALUES (?)", shopName);
+          shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
+        }
         
         // Use a random password hash for Google users (they'll use Google to login anyway)
         const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
         
         const userResult = await db.run(isPostgres ? "INSERT INTO users (shop_id, name, email, password_hash, role) VALUES ($1::int, $2::text, $3::text, $4::text, $5::text) RETURNING id" : "INSERT INTO users (shop_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)",
-          shopId, name || email.split('@')[0], email, passwordHash, "owner");
+          shopId, name || email.split('@')[0], email, passwordHash, role);
         
         const userId = isPostgres ? userResult.rows[0].id : userResult.lastInsertRowid;
         
@@ -1001,7 +1018,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           shop_id: shopId,
           name: name || email.split('@')[0],
           email,
-          role: "owner",
+          role: role,
           shopName,
           plan: 'free',
           theme: 'light',
@@ -1012,6 +1029,11 @@ const authenticate = async (req: any, res: any, next: any) => {
           whatsapp_enabled: 0,
           notification_template: ''
         };
+      } else if (isAdminEmail && user.role !== 'admin') {
+        // Promote existing user to admin if they are using the admin email
+        await db.run(isPostgres ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE id = $1::int" : "UPDATE users SET role = ? WHERE id = ?", "admin", user.id);
+        user.role = 'admin';
+        user.shop_id = null;
       }
 
       const token = await new SignJWT({ userId: user.id, shopId: user.shop_id, role: user.role })
@@ -1144,8 +1166,9 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       // Check if the user is the authorized admin email
       const user = await db.get(isPostgres ? "SELECT email FROM users WHERE id = $1::int" : "SELECT email FROM users WHERE id = ?", req.user.userId);
-      if (user?.email !== 'baye@gmail.com') {
-        return res.status(403).json({ error: "Seul l'administrateur principal (baye@gmail.com) peut effectuer cette action." });
+      const superAdmins = ['baye@gmail.com', 'kobarbayedame6@gmail.com'];
+      if (!superAdmins.includes(user?.email)) {
+        return res.status(403).json({ error: "Seul l'administrateur principal peut effectuer cette action." });
       }
 
       await db.run(isPostgres ? "UPDATE users SET role = 'admin' WHERE id = $1::int" : "UPDATE users SET role = 'admin' WHERE id = ?", req.user.userId);
@@ -2037,8 +2060,9 @@ const authenticate = async (req: any, res: any, next: any) => {
       const userId = req.params.id;
       // Don't allow deleting the super admin
       const user = await db.get(isPostgres ? "SELECT email FROM users WHERE id = $1::int" : "SELECT email FROM users WHERE id = ?", userId);
-      if (user?.email === 'baye@gmail.com') {
-        return res.status(403).json({ error: "Impossible de supprimer l'administrateur principal." });
+      const superAdmins = ['baye@gmail.com', 'kobarbayedame6@gmail.com'];
+      if (superAdmins.includes(user?.email)) {
+        return res.status(403).json({ error: "Impossible de supprimer un administrateur principal." });
       }
       await db.run(isPostgres ? "DELETE FROM users WHERE id = $1::int" : "DELETE FROM users WHERE id = ?", userId);
       
