@@ -46,10 +46,32 @@ const dbUrl = process.env.SUPABASE_URL ||
               process.env.POSTGRES_URL || 
               process.env.POSTGRES_URL_NON_POOLING;
 
-const isPostgres = !!dbUrl;
+// Support for individual PG environment variables
+const pgConfig: any = {
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000, // Increased to 10s for slower connections
+  idleTimeoutMillis: 30000,
+  max: 10,
+};
+
+if (dbUrl) {
+  pgConfig.connectionString = dbUrl;
+} else {
+  // Fallback to individual variables or Supabase defaults provided by user
+  pgConfig.host = process.env.PGHOST || process.env.DB_HOST || "db.gidymhffxqodmviqojwg.supabase.co";
+  pgConfig.port = parseInt(process.env.PGPORT || process.env.DB_PORT || "5432");
+  pgConfig.database = process.env.PGDATABASE || process.env.DB_NAME || "postgres";
+  pgConfig.user = process.env.PGUSER || process.env.DB_USER || "postgres";
+  pgConfig.password = process.env.PGPASSWORD || process.env.DB_PASSWORD;
+}
+
+const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.password));
+
 console.log("[Server] Database configuration:", { 
   mode: isPostgres ? "PostgreSQL" : "SQLite",
   hasUrl: !!dbUrl,
+  hasHost: !!pgConfig.host,
+  hasPassword: !!pgConfig.password,
   env: process.env.NODE_ENV,
   isVercel: !!process.env.VERCEL
 });
@@ -81,17 +103,8 @@ const getSqliteDb = () => {
 };
 
 if (isPostgres) {
-  console.log("Using PostgreSQL database");
-  if (dbUrl?.includes("supabase")) {
-    console.log("Detected Supabase connection string");
-  }
-  pool = new Pool({
-    connectionString: dbUrl,
-    ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 5000, // 5s timeout for Vercel
-    idleTimeoutMillis: 30000,
-    max: 10, // Limit connections for serverless
-  });
+  console.log(`[DB] Using PostgreSQL at ${pgConfig.host || 'connection string'}`);
+  pool = new Pool(pgConfig);
   
   pool.on('error', (err: any) => {
     console.error('Unexpected error on idle client', err);
