@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
@@ -9,12 +8,11 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import fs from "fs";
-import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
 import pg from "pg";
-import twilio from "twilio";
-import admin from "firebase-admin";
 import { AsyncLocalStorage } from 'async_hooks';
+
+console.log("[Server] Initializing module...");
 const { Pool } = pg;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,8 +20,12 @@ const __dirname = path.dirname(__filename);
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, "public", "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (e) {
+  console.warn("Could not create uploads directory (might be read-only):", e);
 }
 
 // Multer Config
@@ -75,7 +77,9 @@ if (isPostgres) {
   pool = new Pool({
     connectionString: dbUrl,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 10000, // 10s timeout
+    connectionTimeoutMillis: 5000, // 5s timeout for Vercel
+    idleTimeoutMillis: 30000,
+    max: 10, // Limit connections for serverless
   });
   
   pool.on('error', (err: any) => {
@@ -517,24 +521,40 @@ const JWT_SECRET_STR = process.env.JWT_SECRET || "smartstock-senegal-secret-key-
 const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STR);
 
 // Initialize Firebase Admin (for token verification)
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    admin.initializeApp({
-      projectId: firebaseConfig.projectId,
-    });
-    console.log("Firebase Admin initialized");
-  } else {
-    console.warn("firebase-applet-config.json not found, skipping Firebase Admin init");
+async function initFirebaseAdmin() {
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const { default: admin } = await import("firebase-admin");
+      if (admin.apps.length === 0) {
+        const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        admin.initializeApp({
+          projectId: firebaseConfig.projectId,
+        });
+        console.log("Firebase Admin initialized");
+      }
+      return admin;
+    }
+  } catch (e) {
+    console.error("Failed to initialize Firebase Admin:", e);
   }
-} catch (e) {
-  console.error("Failed to initialize Firebase Admin:", e);
+  return null;
 }
 
-const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN 
-  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-  : null;
+let firebaseAdmin: any = null;
+initFirebaseAdmin().then(a => firebaseAdmin = a);
+
+async function getTwilioClient() {
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+    try {
+      const { default: twilio } = await import("twilio");
+      return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    } catch (e) {
+      console.error("Failed to load Twilio:", e);
+    }
+  }
+  return null;
+}
 
 async function sendNotification(to: string, message: string, type: 'sms' | 'whatsapp', shopId: number) {
   // Twilio disabled for now as requested
@@ -542,6 +562,7 @@ async function sendNotification(to: string, message: string, type: 'sms' | 'what
   return;
   
   /*
+  const twilioClient = await getTwilioClient();
   if (!twilioClient) {
     console.warn("Twilio not configured. Skipping notification.");
     return;
@@ -861,7 +882,12 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (!idToken) return res.status(400).json({ error: "Token manquant" });
 
       // Verify Firebase ID Token
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const fAdmin = firebaseAdmin || await initFirebaseAdmin();
+      if (!fAdmin) {
+        console.error("Firebase Admin not initialized");
+        return res.status(500).json({ error: "Service d'authentification indisponible" });
+      }
+      const decodedToken = await fAdmin.auth().verifyIdToken(idToken);
       const { email, name, picture, uid } = decodedToken;
 
       if (!email) return res.status(400).json({ error: "Email non fourni par Google" });
@@ -2264,12 +2290,17 @@ const authenticate = async (req: any, res: any, next: any) => {
   // Vite middleware for development
   async function startServerSetup() {
     if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
+      try {
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        });
+        app.use(vite.middlewares);
+      } catch (e) {
+        console.error("Failed to load Vite:", e);
+      }
+    } else {
     app.use(express.static(path.join(__dirname, "dist")));
     app.get("*", (req, res) => {
       const indexPath = path.join(__dirname, "dist", "index.html");
@@ -2359,34 +2390,39 @@ const authenticate = async (req: any, res: any, next: any) => {
     setTimeout(runSubscriptionAutomation, 10000);
 
     const server = http.createServer(app);
-    const wss = new WebSocketServer({ server });
+    try {
+      const { WebSocketServer } = await import("ws");
+      const wss = new WebSocketServer({ server });
 
-    wss.on('connection', (ws, req) => {
-      const url = new URL(req.url || '', `http://${req.headers.host}`);
-      const token = url.searchParams.get('token');
+      wss.on('connection', (ws, req) => {
+        const url = new URL(req.url || '', `http://${req.headers.host}`);
+        const token = url.searchParams.get('token');
 
-      if (!token) {
-        ws.close();
-        return;
-      }
-
-      jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
-        const shopId = payload.shopId;
-        if (!clients.has(shopId)) {
-          clients.set(shopId, new Set());
+        if (!token) {
+          ws.close();
+          return;
         }
-        clients.get(shopId)!.add(ws);
 
-        ws.on('close', () => {
-          clients.get(shopId)?.delete(ws);
-          if (clients.get(shopId)?.size === 0) {
-            clients.delete(shopId);
+        jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
+          const shopId = payload.shopId;
+          if (!clients.has(shopId)) {
+            clients.set(shopId, new Set());
           }
+          clients.get(shopId)!.add(ws);
+
+          ws.on('close', () => {
+            clients.get(shopId)?.delete(ws);
+            if (clients.get(shopId)?.size === 0) {
+              clients.delete(shopId);
+            }
+          });
+        }).catch(() => {
+          ws.close();
         });
-      }).catch(() => {
-        ws.close();
       });
-    });
+    } catch (e) {
+      console.error("Failed to load WebSocket server:", e);
+    }
 
     const PORT = 3000;
     server.listen(PORT, "0.0.0.0", () => {
@@ -2401,7 +2437,8 @@ const authenticate = async (req: any, res: any, next: any) => {
 
 // Start the server setup (top-level await)
 if (!process.env.VERCEL) {
-  await startServerSetup();
+  startServerSetup().catch(err => console.error("Startup error:", err));
 }
 
+console.log("[Server] Module loaded and ready.");
 export default app;
