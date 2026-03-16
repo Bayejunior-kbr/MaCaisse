@@ -41,8 +41,19 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // Database Initialization
-const dbUrl = process.env.SUPABASE_URL || process.env.DATABASE_URL;
+const dbUrl = process.env.SUPABASE_URL || 
+              process.env.DATABASE_URL || 
+              process.env.POSTGRES_URL || 
+              process.env.POSTGRES_URL_NON_POOLING;
+
 const isPostgres = !!dbUrl;
+console.log("[Server] Database configuration:", { 
+  mode: isPostgres ? "PostgreSQL" : "SQLite",
+  hasUrl: !!dbUrl,
+  env: process.env.NODE_ENV,
+  isVercel: !!process.env.VERCEL
+});
+
 let sqliteDb: any;
 let pool: any;
 
@@ -206,33 +217,39 @@ const db = {
 const initDb = async () => {
   if (dbInitialized) return;
   
-  console.log(`[DB] Initializing... Mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
+  console.log(`[DB] Starting initialization... Mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
   
   if (isPostgres) {
+    if (!pool) {
+      throw new Error("PostgreSQL pool not initialized. Check your environment variables (DATABASE_URL or SUPABASE_URL).");
+    }
     try {
-      console.log("[DB] Connecting to pool...");
+      console.log("[DB] Testing PostgreSQL connection...");
       const client = await pool.connect();
-      console.log("[DB] Connected to PostgreSQL");
+      console.log("[DB] PostgreSQL connection successful");
       client.release();
     } catch (err: any) {
-      console.error("CRITICAL: Failed to connect to PostgreSQL:", err.message);
-      // On Vercel, we want to fail fast but maybe allow retry
+      console.error("[DB] CRITICAL: Failed to connect to PostgreSQL:", err.message);
       dbInitPromise = null;
-      throw new Error(`Database connection failed: ${err.message}`);
+      throw new Error(`Database connection failed: ${err.message}. Verify your DATABASE_URL and Supabase status.`);
     }
   } else if (process.env.VERCEL) {
-    console.error("CRITICAL: SQLite is not supported on Vercel. Please set DATABASE_URL.");
-    throw new Error("SQLite not supported on Vercel");
+    console.error("[DB] CRITICAL: SQLite is not supported on Vercel. You MUST set DATABASE_URL or SUPABASE_URL in Vercel project settings.");
+    throw new Error("SQLite not supported on Vercel. Please configure a PostgreSQL database (e.g., Supabase).");
   }
 
   try {
+    console.log("[DB] Checking for existing tables...");
     const tableExists = await db.get(isPostgres 
-      ? "SELECT 1 FROM information_schema.tables WHERE table_name = 'shops' AND table_schema = 'public'" 
+      ? "SELECT 1 FROM information_schema.tables WHERE table_name = 'shops' AND table_schema = 'public' LIMIT 1" 
       : "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shops'");
     
+    console.log(`[DB] Table 'shops' exists: ${!!tableExists}`);
+
     if (!tableExists) {
       console.log("[DB] Initializing database schema...");
       const schema = `
+        -- Schema initialization
         CREATE TABLE IF NOT EXISTS shops (
           id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
           name TEXT NOT NULL,
@@ -399,11 +416,18 @@ const initDb = async () => {
           created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
         );
       `;
-      await db.exec(schema);
-      console.log("Database schema initialized.");
+      
+      try {
+        await db.exec(schema);
+        console.log("[DB] Database schema initialized.");
+      } catch (schemaErr: any) {
+        console.error("[DB] Failed to execute schema:", schemaErr.message);
+        throw new Error(`Schema initialization failed: ${schemaErr.message}`);
+      }
     }
   } catch (e: any) {
-    console.log("Database initialization failed:", e.message);
+    console.error("[DB] Initialization error:", e.message);
+    throw e;
   }
 
   // Migration for new columns - only run if needed
@@ -603,14 +627,15 @@ function formatNotificationMessage(template: string, data: { customer_name: stri
 const app = express();
 
 // Store active WS connections by shopId
-const clients = new Map<number, Set<WebSocket>>();
+const clients = new Map<number, Set<any>>();
 
 const broadcastToShop = (shopId: number, data: any) => {
   const shopClients = clients.get(shopId);
   if (shopClients) {
     const message = JSON.stringify(data);
     shopClients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
+      // Use numeric value for readyState to avoid type issues with dynamic ws import
+      if (client.readyState === 1) { // 1 is OPEN
         client.send(message);
       }
     });
@@ -685,15 +710,49 @@ app.use(async (req, res, next) => {
 // Health check endpoints
 app.get("/api/health", async (req, res) => {
   try {
-    const result = await db.get(isPostgres ? "SELECT 1 as ok" : "SELECT 1 as ok");
+    // Basic check without full init to avoid timeouts if init is broken
+    const result = isPostgres ? await pool.query("SELECT 1 as ok") : await db.get("SELECT 1 as ok");
     res.json({ 
       status: "ok", 
       database: isPostgres ? "PostgreSQL" : "SQLite",
       db_connection: !!result,
-      env: process.env.NODE_ENV
+      env: process.env.NODE_ENV,
+      isVercel: !!process.env.VERCEL
     });
   } catch (e: any) {
-    res.status(500).json({ status: "error", message: e.message });
+    res.status(500).json({ 
+      status: "error", 
+      message: e.message,
+      isVercel: !!process.env.VERCEL,
+      hasDbUrl: !!dbUrl
+    });
+  }
+});
+
+app.get("/api/debug-db", async (req, res) => {
+  const info = {
+    isVercel: !!process.env.VERCEL,
+    nodeEnv: process.env.NODE_ENV,
+    dbMode: isPostgres ? "PostgreSQL" : "SQLite",
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasDatabaseUrl: !!process.env.DATABASE_URL,
+    hasPostgresUrl: !!process.env.POSTGRES_URL,
+    dbInitialized,
+    dbInitPromise: !!dbInitPromise
+  };
+  
+  try {
+    if (isPostgres) {
+      if (!pool) throw new Error("Pool not initialized");
+      const client = await pool.connect();
+      const ver = await client.query("SELECT version()");
+      client.release();
+      res.json({ ...info, connection: "OK", pgVersion: ver.rows[0].version });
+    } else {
+      res.json({ ...info, connection: "SQLite (Local)" });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ...info, connection: "FAILED", error: err.message });
   }
 });
 
@@ -1111,7 +1170,8 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   // Notification Routes
   app.get("/api/notifications/status", authenticate, async (req: any, res) => {
-    res.json({ configured: !!twilioClient });
+    const twilio = await getTwilioClient();
+    res.json({ configured: !!twilio });
   });
 
   app.post("/api/notifications/send", authenticate, async (req: any, res) => {
