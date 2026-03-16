@@ -44,7 +44,8 @@ const upload = multer({ storage });
 const dbUrl = process.env.SUPABASE_URL || 
               process.env.DATABASE_URL || 
               process.env.POSTGRES_URL || 
-              process.env.POSTGRES_URL_NON_POOLING;
+              process.env.POSTGRES_URL_NON_POOLING ||
+              process.env.STORAGE_URL;
 
 // Support for individual PG environment variables
 const pgConfig: any = {
@@ -58,11 +59,12 @@ if (dbUrl) {
   pgConfig.connectionString = dbUrl;
 } else {
   // Fallback to individual variables or Supabase defaults provided by user
-  pgConfig.host = process.env.PGHOST || process.env.DB_HOST || "db.gidymhffxqodmviqojwg.supabase.co";
-  pgConfig.port = parseInt(process.env.PGPORT || process.env.DB_PORT || "5432");
-  pgConfig.database = process.env.PGDATABASE || process.env.DB_NAME || "postgres";
-  pgConfig.user = process.env.PGUSER || process.env.DB_USER || "postgres";
-  pgConfig.password = process.env.PGPASSWORD || process.env.DB_PASSWORD;
+  // Prioritize Vercel Postgres variables if they exist
+  pgConfig.host = process.env.POSTGRES_HOST || process.env.STORAGE_HOST || process.env.PGHOST || process.env.DB_HOST || "db.gidymhffxqodmviqojwg.supabase.co";
+  pgConfig.port = parseInt(process.env.POSTGRES_PORT || process.env.STORAGE_PORT || process.env.PGPORT || process.env.DB_PORT || "5432");
+  pgConfig.database = process.env.POSTGRES_DATABASE || process.env.STORAGE_DATABASE || process.env.PGDATABASE || process.env.DB_NAME || "postgres";
+  pgConfig.user = process.env.POSTGRES_USER || process.env.STORAGE_USER || process.env.PGUSER || process.env.DB_USER || "postgres";
+  pgConfig.password = process.env.POSTGRES_PASSWORD || process.env.STORAGE_PASSWORD || process.env.PGPASSWORD || process.env.DB_PASSWORD;
 }
 
 const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.password));
@@ -71,10 +73,21 @@ console.log("[Server] Database configuration:", {
   mode: isPostgres ? "PostgreSQL" : "SQLite",
   hasUrl: !!dbUrl,
   hasHost: !!pgConfig.host,
+  hasUser: !!pgConfig.user,
+  hasDb: !!pgConfig.database,
   hasPassword: !!pgConfig.password,
   env: process.env.NODE_ENV,
   isVercel: !!process.env.VERCEL
 });
+
+if (process.env.VERCEL && !isPostgres) {
+  console.error("[DB] CRITICAL: You are running on Vercel but no PostgreSQL database is connected.");
+  console.error("[DB] ACTION REQUIRED: Go to the 'Storage' tab in Vercel, create a 'Postgres' database, and click 'Connect'.");
+}
+
+if (isPostgres && !pgConfig.connectionString && !pgConfig.password) {
+  console.warn("[DB] WARNING: PostgreSQL mode detected but no password provided. Connection will likely fail.");
+}
 
 let sqliteDb: any;
 let pool: any;
