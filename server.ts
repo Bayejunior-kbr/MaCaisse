@@ -582,15 +582,20 @@ async function initFirebaseAdmin() {
   try {
     const configPath = path.join(process.cwd(), "firebase-applet-config.json");
     if (fs.existsSync(configPath)) {
+      console.log("[Firebase] Loading config from:", configPath);
       const { default: admin } = await import("firebase-admin");
       if (admin.apps.length === 0) {
-        const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        const configRaw = fs.readFileSync(configPath, "utf8");
+        const firebaseConfig = JSON.parse(configRaw);
+        console.log("[Firebase] Initializing admin for project:", firebaseConfig.projectId);
         admin.initializeApp({
           projectId: firebaseConfig.projectId,
         });
-        console.log("Firebase Admin initialized");
+        console.log("[Firebase] Admin initialized successfully");
       }
       return admin;
+    } else {
+      console.error("[Firebase] Config file NOT found at:", configPath);
     }
   } catch (e) {
     console.error("Failed to initialize Firebase Admin:", e);
@@ -934,10 +939,18 @@ const authenticate = async (req: any, res: any, next: any) => {
       // Verify Firebase ID Token
       const fAdmin = firebaseAdmin || await initFirebaseAdmin();
       if (!fAdmin) {
-        console.error("Firebase Admin not initialized");
-        return res.status(500).json({ error: "Service d'authentification indisponible" });
+        console.error("[Auth] Firebase Admin not initialized - check firebase-applet-config.json");
+        return res.status(500).json({ error: "Service d'authentification indisponible (Admin non initialisé)" });
       }
-      const decodedToken = await fAdmin.auth().verifyIdToken(idToken);
+      
+      let decodedToken;
+      try {
+        decodedToken = await fAdmin.auth().verifyIdToken(idToken);
+      } catch (verifyError: any) {
+        console.error("[Auth] Firebase token verification failed:", verifyError.message);
+        return res.status(401).json({ error: `Token invalide: ${verifyError.message}` });
+      }
+      
       const { email, name, picture, uid } = decodedToken;
 
       if (!email) return res.status(400).json({ error: "Email non fourni par Google" });

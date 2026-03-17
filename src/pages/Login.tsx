@@ -65,8 +65,14 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
       }
     } catch (err: any) {
       console.error("Google login error:", err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setError('Erreur lors de la connexion Google');
+      if (err.code === 'auth/popup-blocked') {
+        setError('Le popup a été bloqué par votre navigateur. Veuillez autoriser les popups pour ce site.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        // No error message needed if user closed it
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError('Ce domaine n\'est pas autorisé pour l\'authentification Google. Veuillez contacter l\'administrateur.');
+      } else {
+        setError(`Erreur lors de la connexion Google: ${err.message || 'Erreur inconnue'}`);
       }
     } finally {
       setLoading(false);

@@ -102,8 +102,14 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
       }
     } catch (err: any) {
       console.error("Google register error:", err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setError('Erreur lors de l\'inscription Google');
+      if (err.code === 'auth/popup-blocked') {
+        setError('Le popup a été bloqué par votre navigateur. Veuillez autoriser les popups pour ce site.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        // No error message needed
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError('Ce domaine n\'est pas autorisé pour l\'authentification Google. Veuillez contacter l\'administrateur.');
+      } else {
+        setError(`Erreur lors de l'inscription Google: ${err.message || 'Erreur inconnue'}`);
       }
     } finally {
       setLoading(false);
