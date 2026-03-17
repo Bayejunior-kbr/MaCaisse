@@ -111,136 +111,136 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/50 overflow-hidden border border-slate-100 p-8 md:p-12">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50 mx-auto mb-4">
+          <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50 mx-auto mb-6">
             <Store size={32} strokeWidth={2.5} />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">Créer votre boutique</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Créer votre boutique</h1>
           <p className="text-slate-500 mt-2">Rejoignez ShopMaster Pro aujourd'hui</p>
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-100">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Nom de la boutique</label>
-            <div className="relative">
-              <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all"
-                placeholder="Ma Boutique"
-                value={formData.shopName}
-                onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
-              />
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-sm border border-red-100">
+              {error}
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Votre Nom</label>
-            <div className="relative">
-              <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="text"
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all"
-                placeholder="Prénom Nom"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Email professionnel</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="email"
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all"
-                placeholder="votre@email.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">Mot de passe</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                type="password"
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              />
-            </div>
-            {formData.password && (
-              <div className="mt-2">
-                <div className="flex gap-1 h-1.5 mb-1">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <div 
-                      key={level}
-                      className={`flex-1 rounded-full transition-all duration-500 ${
-                        level <= strength ? strengthColor : 'bg-slate-100'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <p className={`text-[10px] font-bold uppercase tracking-wider ${
-                  strength <= 2 ? 'text-red-500' : strength <= 3 ? 'text-orange-500' : 'text-emerald-500'
-                }`}>
-                  Force: {strengthText}
-                </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">Nom de la boutique</label>
+              <div className="relative">
+                <Store className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  required
+                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                  placeholder="Ma Boutique"
+                  value={formData.shopName}
+                  onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
+                />
               </div>
-            )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">Votre Nom</label>
+              <div className="relative">
+                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  required
+                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                  placeholder="Prénom Nom"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">Email professionnel</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="email"
+                  required
+                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                  placeholder="votre@email.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5">Mot de passe</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="password"
+                  required
+                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
+              {formData.password && (
+                <div className="mt-2">
+                  <div className="flex gap-1 h-1.5 mb-1">
+                    {[1, 2, 3, 4, 5].map((level) => (
+                      <div 
+                        key={level}
+                        className={`flex-1 rounded-full transition-all duration-500 ${
+                          level <= strength ? strengthColor : 'bg-slate-100'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${
+                    strength <= 2 ? 'text-red-500' : strength <= 3 ? 'text-orange-500' : 'text-emerald-500'
+                  }`}>
+                    Force: {strengthText}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-emerald-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4"
+            >
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <ArrowRight size={20} />}
+              Créer mon compte
+            </button>
+          </form>
+
+          <div className="relative my-8">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-100"></div>
+            </div>
+            <div className="relative flex justify-center text-xs font-bold uppercase tracking-widest text-slate-400">
+              <span className="px-4 bg-white">Ou s'inscrire avec</span>
+            </div>
           </div>
 
           <button
-            type="submit"
+            onClick={handleGoogleRegister}
             disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-100 transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-4"
+            className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-4 rounded-2xl border border-slate-200 transition-all flex items-center justify-center gap-3 disabled:opacity-70 shadow-sm"
           >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : <ArrowRight size={20} />}
-            Créer mon compte
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+            Google
           </button>
-        </form>
 
-        <div className="relative my-8">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-200"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-white text-slate-500">Ou s'inscrire avec</span>
-          </div>
-        </div>
-
-        <button
-          onClick={handleGoogleRegister}
-          disabled={loading}
-          className="w-full bg-white hover:bg-slate-50 text-slate-700 font-semibold py-3 rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-3 disabled:opacity-70"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-          Google
-        </button>
-
-        <p className="text-center mt-8 text-slate-600 text-sm">
-          Déjà un compte ?{' '}
-          <Link to="/login" className="text-emerald-600 font-bold hover:underline">
-            Se connecter
-          </Link>
-        </p>
+          <p className="text-center mt-8 text-slate-600 text-sm">
+            Déjà un compte ?{' '}
+            <Link to="/login" className="text-emerald-600 font-black hover:underline">
+              Se connecter
+            </Link>
+          </p>
       </div>
     </div>
   );

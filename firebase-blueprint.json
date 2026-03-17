@@ -2,7 +2,7 @@
   "entities": {
     "Shop": {
       "title": "Shop",
-      "description": "A business shop using the application",
+      "description": "A shop or boutique in the system",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
@@ -26,25 +26,34 @@
     },
     "User": {
       "title": "User",
-      "description": "A user account",
+      "description": "A user belonging to a shop",
       "type": "object",
       "properties": {
         "shop_id": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string", "format": "email" },
-        "role": { "type": "string", "enum": ["admin", "owner", "employee"] },
+        "role": { "type": "string", "enum": ["owner", "employee", "admin"] },
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "email", "role"]
     },
+    "Category": {
+      "title": "Category",
+      "description": "Product category",
+      "type": "object",
+      "properties": {
+        "shop_id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["shop_id", "name"]
+    },
     "Product": {
       "title": "Product",
-      "description": "An inventory item",
+      "description": "A product in inventory",
       "type": "object",
       "properties": {
         "shop_id": { "type": "string" },
         "category_id": { "type": "string" },
-        "supplier_id": { "type": "string" },
         "name": { "type": "string" },
         "barcode": { "type": "string" },
         "image_url": { "type": "string" },
@@ -55,6 +64,21 @@
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["shop_id", "name", "purchase_price", "sale_price"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer of a shop",
+      "type": "object",
+      "properties": {
+        "shop_id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "address": { "type": "string" },
+        "total_debt": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shop_id", "name"]
     },
     "Sale": {
       "title": "Sale",
@@ -69,26 +93,86 @@
         "tax_amount": { "type": "number" },
         "discount_amount": { "type": "number" },
         "payment_method": { "type": "string" },
-        "payment_status": { "type": "string" },
+        "payment_status": { "type": "string", "enum": ["paid", "debt", "partial"] },
         "amount_paid": { "type": "number" },
         "created_at": { "type": "string", "format": "date-time" }
       },
-      "required": ["shop_id", "user_id", "total_amount"]
+      "required": ["shop_id", "user_id", "total_amount", "total_profit"]
     },
-    "Customer": {
-      "title": "Customer",
-      "description": "A customer record",
+    "SaleItem": {
+      "title": "SaleItem",
+      "description": "An item within a sale",
+      "type": "object",
+      "properties": {
+        "sale_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "quantity": { "type": "integer" },
+        "unit_price": { "type": "number" },
+        "unit_profit": { "type": "number" },
+        "total_price": { "type": "number" }
+      },
+      "required": ["sale_id", "product_id", "quantity", "unit_price", "total_price"]
+    },
+    "CustomerPayment": {
+      "title": "CustomerPayment",
+      "description": "A payment made by a customer for debt",
       "type": "object",
       "properties": {
         "shop_id": { "type": "string" },
-        "name": { "type": "string" },
-        "phone": { "type": "string" },
-        "email": { "type": "string" },
-        "address": { "type": "string" },
-        "total_debt": { "type": "number" },
+        "customer_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "amount": { "type": "number" },
+        "payment_method": { "type": "string" },
+        "notes": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       },
-      "required": ["shop_id", "name"]
+      "required": ["shop_id", "customer_id", "user_id", "amount"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a shop",
+      "type": "object",
+      "properties": {
+        "shop_id": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "is_read": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shop_id", "type", "title", "message"]
+    },
+    "SubscriptionRequest": {
+      "title": "SubscriptionRequest",
+      "description": "A request to upgrade a shop's plan",
+      "type": "object",
+      "properties": {
+        "shop_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "plan": { "type": "string" },
+        "payment_method": { "type": "string" },
+        "phone_number": { "type": "string" },
+        "transaction_ref": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shop_id", "plan"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "A shop expense",
+      "type": "object",
+      "properties": {
+        "shop_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["shop_id", "user_id", "title", "amount", "category"]
     },
     "Supplier": {
       "title": "Supplier",
@@ -99,7 +183,7 @@
         "name": { "type": "string" },
         "contact_name": { "type": "string" },
         "phone": { "type": "string" },
-        "email": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
         "address": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       },
@@ -107,29 +191,17 @@
     }
   },
   "firestore": {
-    "/shops/{shopId}": {
-      "schema": "Shop",
-      "description": "Shop details"
-    },
-    "/users/{userId}": {
-      "schema": "User",
-      "description": "User profiles"
-    },
-    "/shops/{shopId}/products/{productId}": {
-      "schema": "Product",
-      "description": "Products belonging to a shop"
-    },
-    "/shops/{shopId}/sales/{saleId}": {
-      "schema": "Sale",
-      "description": "Sales belonging to a shop"
-    },
-    "/shops/{shopId}/customers/{customerId}": {
-      "schema": "Customer",
-      "description": "Customers belonging to a shop"
-    },
-    "/shops/{shopId}/suppliers/{supplierId}": {
-      "schema": "Supplier",
-      "description": "Suppliers belonging to a shop"
-    }
+    "/shops/{shopId}": { "schema": "Shop", "description": "Shop details" },
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/categories/{categoryId}": { "schema": "Category", "description": "Product categories" },
+    "/products/{productId}": { "schema": "Product", "description": "Inventory products" },
+    "/customers/{customerId}": { "schema": "Customer", "description": "Customer records" },
+    "/sales/{saleId}": { "schema": "Sale", "description": "Sales transactions" },
+    "/sale_items/{itemId}": { "schema": "SaleItem", "description": "Individual items in a sale" },
+    "/customer_payments/{paymentId}": { "schema": "CustomerPayment", "description": "Customer debt payments" },
+    "/notifications/{notificationId}": { "schema": "Notification", "description": "System notifications" },
+    "/subscription_requests/{requestId}": { "schema": "SubscriptionRequest", "description": "Plan upgrade requests" },
+    "/expenses/{expenseId}": { "schema": "Expense", "description": "Business expenses" },
+    "/suppliers/{supplierId}": { "schema": "Supplier", "description": "Product suppliers" }
   }
 }

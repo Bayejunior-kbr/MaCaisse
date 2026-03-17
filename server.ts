@@ -601,52 +601,10 @@ async function initFirebaseAdmin() {
 let firebaseAdmin: any = null;
 initFirebaseAdmin().then(a => firebaseAdmin = a);
 
-async function getTwilioClient() {
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-    try {
-      const { default: twilio } = await import("twilio");
-      return twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    } catch (e) {
-      console.error("Failed to load Twilio:", e);
-    }
-  }
-  return null;
-}
-
 async function sendNotification(to: string, message: string, type: 'sms' | 'whatsapp', shopId: number) {
-  // Twilio disabled for now as requested
-  console.log(`[Twilio Disabled] Notification to ${to} via ${type}: ${message}`);
+  // Twilio disabled as requested
+  console.log(`[Notification Disabled] To ${to} via ${type}: ${message}`);
   return;
-  
-  /*
-  const twilioClient = await getTwilioClient();
-  if (!twilioClient) {
-    console.warn("Twilio not configured. Skipping notification.");
-    return;
-  }
-
-  const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
-  if (!shop) return;
-
-  const isSms = type === 'sms' && shop.sms_enabled;
-  const isWhatsapp = type === 'whatsapp' && shop.whatsapp_enabled;
-
-  if (!isSms && !isWhatsapp) return;
-
-  try {
-    const from = type === 'sms' ? process.env.TWILIO_PHONE_NUMBER : `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
-    const toFormatted = type === 'whatsapp' ? `whatsapp:${to}` : to;
-
-    await twilioClient.messages.create({
-      body: message,
-      from,
-      to: toFormatted
-    });
-    console.log(`Notification sent to ${to} via ${type}`);
-  } catch (err: any) {
-    console.error(`Error sending ${type} notification:`, err.message);
-  }
-  */
 }
 
 function formatNotificationMessage(template: string, data: { customer_name: string, amount: number, currency: string, shop_name: string }) {
@@ -1217,23 +1175,13 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
-  // Notification Routes
+  // Notification Routes (Disabled)
   app.get("/api/notifications/status", authenticate, async (req: any, res) => {
-    const twilio = await getTwilioClient();
-    res.json({ configured: !!twilio });
+    res.json({ configured: false });
   });
 
   app.post("/api/notifications/send", authenticate, async (req: any, res) => {
-    try {
-      const { to, message, type } = req.body;
-      if (!to || !message || !type) {
-        return res.status(400).json({ error: "Missing parameters" });
-      }
-      await sendNotification(to, message, type, req.user.shopId);
-      res.json({ success: true });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
+    res.status(501).json({ error: "Notifications are currently disabled" });
   });
 
   app.post("/api/shop/notifications/settings", authenticate, async (req: any, res) => {

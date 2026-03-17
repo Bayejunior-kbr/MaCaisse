@@ -31,25 +31,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
     notification_template: user.notification_template || '',
     has_ai_features: user.has_ai_features || false
   });
-  const [twilioStatus, setTwilioStatus] = useState<boolean | null>(null);
-
-  React.useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch('/api/notifications/status', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setTwilioStatus(data.configured);
-        }
-      } catch (err) {
-        console.error("Failed to fetch notification status:", err);
-      }
-    };
-    fetchStatus();
-  }, []);
+  // Twilio status removed as requested
 
   const isPremium = user.plan === 'premium';
 
@@ -378,17 +360,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                   Canaux de notification
                 </h3>
                 
-                {twilioStatus === false && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-                    <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-                    <div>
-                      <p className="text-sm font-bold text-amber-800">Twilio non configuré</p>
-                      <p className="text-xs text-amber-700">
-                        Veuillez configurer les variables d'environnement Twilio sur le serveur pour activer les notifications SMS/WhatsApp.
-                      </p>
-                    </div>
-                  </div>
-                )}
+                {/* Twilio status check removed */}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 bg-slate-50/30">
