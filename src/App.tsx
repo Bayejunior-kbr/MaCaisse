@@ -184,6 +184,8 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
             icon={Store} 
             label="Fournisseurs" 
             active={location.pathname === "/suppliers"} 
+            premiumOnly
+            userPlan={user.plan}
             isSubItem
           />
           <SidebarItem 
@@ -192,7 +194,9 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
             label="Utilisateurs" 
             active={location.pathname === "/users"} 
             ownerOnly
+            premiumOnly
             userRole={user.role}
+            userPlan={user.plan}
             isSubItem
           />
         </SidebarGroup>
@@ -780,7 +784,7 @@ export default function App() {
         <Route path="/suppliers" element={
           user ? (
             <Layout user={user} onLogout={handleLogout}>
-              <Suppliers />
+              <Suppliers user={user} />
             </Layout>
           ) : <Navigate to="/login" />
         } />
@@ -788,7 +792,7 @@ export default function App() {
         <Route path="/users" element={
           user && (user.role === 'owner' || user.role === 'admin') ? (
             <Layout user={user} onLogout={handleLogout}>
-              <UsersPage />
+              <UsersPage user={user} />
             </Layout>
           ) : <Navigate to="/" />
         } />

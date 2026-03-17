@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
+import { SubscriptionTimer } from '../components/SubscriptionTimer';
 
 export default function Subscription({ user, onUpdateUser }: { user: User, onUpdateUser: (user: User) => void }) {
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,15 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
   const [paymentMethod, setPaymentMethod] = useState<'wave' | 'orange' | 'card'>('wave');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [transactionRef, setTransactionRef] = useState('');
+  const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
   const [requests, setRequests] = useState<any[]>([]);
+
+  const durations = [
+    { months: 1, price: 10000, label: '1 Mois' },
+    { months: 3, price: 27000, label: '3 Mois', discount: '10%' },
+    { months: 6, price: 50000, label: '6 Mois', discount: '15%' },
+    { months: 12, price: 90000, label: '1 An', discount: '25%' },
+  ];
 
   useEffect(() => {
     fetchRequests();
@@ -53,6 +62,7 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
         },
         body: JSON.stringify({ 
           plan: 'premium',
+          duration_months: duration,
           payment_method: paymentMethod,
           phone_number: phoneNumber,
           transaction_ref: transactionRef
@@ -71,6 +81,8 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
       setLoading(false);
     }
   };
+
+  const selectedDuration = durations.find(d => d.months === duration);
 
   return (
     <div className="max-w-4xl mx-auto space-y-10">
@@ -124,7 +136,31 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
             <h3 className="text-xl font-bold text-white">Version Premium</h3>
             <p className="text-slate-400 text-sm">Pour les boutiques ambitieuses</p>
           </div>
-          <div className="text-3xl font-bold text-white mb-8">10 000 CFA <span className="text-sm font-normal text-slate-400">/ mois</span></div>
+          <div className="text-3xl font-bold text-white mb-8">
+            {selectedDuration?.price.toLocaleString()} CFA 
+            <span className="text-sm font-normal text-slate-400"> / {selectedDuration?.label}</span>
+          </div>
+          
+          <div className="mb-8 space-y-3">
+            <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Choisir la durée</p>
+            <div className="grid grid-cols-2 gap-2">
+              {durations.map((d) => (
+                <button
+                  key={d.months}
+                  onClick={() => setDuration(d.months as any)}
+                  className={cn(
+                    "px-3 py-2 rounded-xl text-xs font-bold transition-all border",
+                    duration === d.months 
+                      ? "bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/50" 
+                      : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
+                  )}
+                >
+                  {d.label}
+                  {d.discount && <span className="ml-1 text-[8px] bg-amber-500 text-white px-1 rounded">-{d.discount}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
           
           <ul className="space-y-4 mb-10 flex-1">
             <li className="flex items-center gap-3 text-slate-300">
@@ -146,9 +182,15 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
           </ul>
 
           {user.plan === 'premium' ? (
-            <button disabled className="w-full py-3 rounded-xl border border-emerald-500/30 text-emerald-400 font-bold">
-              Plan actuel
-            </button>
+            <div className="space-y-4">
+              <button disabled className="w-full py-3 rounded-xl border border-emerald-500/30 text-emerald-400 font-bold">
+                Plan actuel
+              </button>
+              <div className="p-4 bg-emerald-900/20 rounded-2xl border border-emerald-500/20 text-center">
+                <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Temps restant</p>
+                <SubscriptionTimer className="inline-flex" />
+              </div>
+            </div>
           ) : (
             <button 
               onClick={() => setShowPaymentModal(true)}
@@ -244,8 +286,12 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
                 </button>
               </div>
 
-              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
-                <p className="text-xs text-slate-500 mb-3 uppercase font-bold tracking-wider">Instructions de paiement</p>
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Récapitulatif</p>
+                    <p className="text-sm font-bold text-emerald-600">{selectedDuration?.price.toLocaleString()} CFA</p>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-3 uppercase font-bold tracking-wider">Instructions de paiement</p>
                 
                 {paymentMethod === 'wave' && (
                   <div className="space-y-3">

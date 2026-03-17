@@ -11,11 +11,15 @@ import {
   User as UserIcon,
   X,
   AlertCircle,
-  Loader2
+  Loader2,
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { secureFetch } from '../lib/api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { User } from '../types';
+import { Link } from 'react-router-dom';
 
 interface Supplier {
   id: number;
@@ -27,7 +31,7 @@ interface Supplier {
   created_at: string;
 }
 
-export default function Suppliers() {
+export default function Suppliers({ user }: { user: User }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,8 +50,34 @@ export default function Suppliers() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchSuppliers();
-  }, []);
+    if (user.plan === 'premium' || user.role === 'admin') {
+      fetchSuppliers();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
+
+  if (user.plan !== 'premium' && user.role !== 'admin') {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mb-6 shadow-lg shadow-amber-100">
+          <Zap size={40} className="fill-amber-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Fonctionnalité Premium</h2>
+        <p className="text-slate-500 max-w-md mb-8">
+          La gestion des fournisseurs est réservée aux abonnés <strong>Premium</strong>. 
+          Passez au niveau supérieur pour organiser vos approvisionnements efficacement.
+        </p>
+        <Link 
+          to="/subscription"
+          className="px-8 py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 flex items-center gap-2"
+        >
+          <Zap size={20} className="text-amber-400 fill-amber-400" />
+          Découvrir le Premium
+        </Link>
+      </div>
+    );
+  }
 
   const fetchSuppliers = async () => {
     try {

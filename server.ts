@@ -388,6 +388,7 @@ const initDb = async () => {
           shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
           user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
           plan TEXT NOT NULL,
+          duration_months INTEGER DEFAULT 1,
           payment_method TEXT,
           phone_number TEXT,
           transaction_ref TEXT,
@@ -1071,17 +1072,17 @@ const authenticate = async (req: any, res: any, next: any) => {
   // Subscription Request Routes
   app.post("/api/subscription/request", authenticate, async (req: any, res) => {
     try {
-      const { plan, payment_method, phone_number, transaction_ref } = req.body;
+      const { plan, duration_months, payment_method, phone_number, transaction_ref } = req.body;
       const result = await db.run(isPostgres 
-        ? `INSERT INTO subscription_requests (shop_id, user_id, plan, payment_method, phone_number, transaction_ref)
-           VALUES ($1::int, $2::int, $3::text, $4::text, $5::text, $6::text) RETURNING id`
-        : `INSERT INTO subscription_requests (shop_id, user_id, plan, payment_method, phone_number, transaction_ref)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        req.user.shopId, req.user.userId, plan, payment_method, phone_number, transaction_ref);
+        ? `INSERT INTO subscription_requests (shop_id, user_id, plan, duration_months, payment_method, phone_number, transaction_ref)
+           VALUES ($1::int, $2::int, $3::text, $4::int, $5::text, $6::text, $7::text) RETURNING id`
+        : `INSERT INTO subscription_requests (shop_id, user_id, plan, duration_months, payment_method, phone_number, transaction_ref)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        req.user.shopId, req.user.userId, plan, duration_months || 1, payment_method, phone_number, transaction_ref);
       
       const requestId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
       
-      await alertAdmin('Demande d\'Abonnement', `La boutique ID ${req.user.shopId} a demandé le plan ${plan} via ${payment_method}.`);
+      await alertAdmin('Demande d\'Abonnement', `La boutique ID ${req.user.shopId} a demandé le plan ${plan} (${duration_months || 1} mois) via ${payment_method}.`);
       
       res.json({ id: requestId });
     } catch (e: any) {
@@ -2114,8 +2115,10 @@ const authenticate = async (req: any, res: any, next: any) => {
         console.log(`[Approve] Updating request status...`);
         await db.run(isPostgres ? "UPDATE subscription_requests SET status = 'approved' WHERE id = $1::int" : "UPDATE subscription_requests SET status = 'approved' WHERE id = ?", requestId);
         console.log(`[Approve] Updating shop plan...`);
+        
+        const durationMonths = request.duration_months || 1;
         const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
+        expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
         const expiresAtStr = expiresAt.toISOString().replace('T', ' ').replace('Z', '');
 
         await db.run(isPostgres 
