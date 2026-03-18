@@ -1049,6 +1049,45 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
+  app.get("/api/auth/me", authenticate, async (req: any, res) => {
+    try {
+      const user = await db.get(isPostgres 
+        ? `SELECT u.*, sh.name as shopName, sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
+           FROM users u 
+           LEFT JOIN shops sh ON u.shop_id = sh.id 
+           WHERE u.id = $1::int`
+        : `SELECT u.*, sh.name as shopName, sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
+           FROM users u 
+           LEFT JOIN shops sh ON u.shop_id = sh.id 
+           WHERE u.id = ?`, 
+        req.user.userId);
+
+      if (!user) return res.status(404).json({ error: "Utilisateur non trouvé" });
+
+      res.json({ 
+        id: user.id,
+        shopId: user.shop_id,
+        name: user.name, 
+        email: user.email, 
+        role: user.role, 
+        shopName: user.shopName, 
+        plan: user.plan || 'free',
+        logo_url: user.logo_url,
+        theme: user.theme || 'light',
+        language: user.language || 'fr',
+        currency: user.currency || 'FCFA',
+        receipt_footer: user.receipt_footer,
+        show_tax: !!user.show_tax,
+        sms_enabled: !!user.sms_enabled,
+        whatsapp_enabled: !!user.whatsapp_enabled,
+        notification_template: user.notification_template || ''
+      });
+    } catch (e: any) {
+      console.error("Get profile error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/shop/subscription", authenticate, async (req: any, res) => {
     console.log(`[API] Fetching subscription for shop ${req.user.shopId}`);
     try {
@@ -1072,7 +1111,10 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.post("/api/shop/upgrade", authenticate, async (req: any, res) => {
     try {
       const { plan } = req.body; // 'premium'
-      await db.run(isPostgres ? "UPDATE shops SET plan = $1::text WHERE id = $2::int" : "UPDATE shops SET plan = ? WHERE id = ?", plan, req.user.shopId);
+      await db.run(isPostgres 
+        ? "UPDATE shops SET plan = $1::text, has_ai_features = $3::int WHERE id = $2::int" 
+        : "UPDATE shops SET plan = ?, has_ai_features = ? WHERE id = ?", 
+        plan, req.user.shopId, plan === 'premium' ? 1 : 0);
       res.json({ success: true, plan });
     } catch (e: any) {
       console.error("Upgrade shop error:", e);
@@ -1475,6 +1517,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           totalProfit += profit;
           item.unit_profit = item.unit_price - product.purchase_price;
           item.product_name = product.name;
+          console.log(`[Sales] Item: ${item.product_name}, ID: ${item.product_id}, Profit: ${item.unit_profit}`);
         }
 
         const saleResult = await db.run(isPostgres 
@@ -2149,9 +2192,9 @@ const authenticate = async (req: any, res: any, next: any) => {
 
         console.log(`[Approve] Updating shop plan to ${request.plan}, expires at ${expiresAtStr}`);
         await db.run(isPostgres 
-          ? "UPDATE shops SET plan = $1::text, subscription_expires_at = $2::timestamp, status = 'active' WHERE id = $3::int" 
-          : "UPDATE shops SET plan = ?, subscription_expires_at = ?, status = 'active' WHERE id = ?", 
-          request.plan, expiresAtStr, request.shop_id);
+          ? "UPDATE shops SET plan = $1::text, subscription_expires_at = $2::timestamp, status = 'active', has_ai_features = $4::int WHERE id = $3::int" 
+          : "UPDATE shops SET plan = ?, subscription_expires_at = ?, status = 'active', has_ai_features = ? WHERE id = ?", 
+          request.plan, expiresAtStr, request.shop_id, request.plan === 'premium' ? 1 : 0);
         
         console.log(`[Approve] Creating notification...`);
         await createNotification(

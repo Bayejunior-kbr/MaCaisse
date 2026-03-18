@@ -45,9 +45,9 @@ export default function LogoGenerator() {
         }
       }
       throw new Error("Aucune image n'a été générée.");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Logo generation failed:", err);
-      setError("La génération du logo a échoué. Veuillez vérifier votre connexion ou réessayer plus tard.");
+      setError(err.message || "La génération du logo a échoué. Veuillez vérifier votre connexion ou réessayer plus tard.");
     } finally {
       setIsGenerating(false);
     }

@@ -660,7 +660,7 @@ export default function App() {
   useEffect(() => {
     testFirestoreConnection();
     
-    const refreshUser = () => {
+    const refreshUser = async () => {
       const storedUser = localStorage.getItem('user');
       const token = localStorage.getItem('token');
       
@@ -674,8 +674,19 @@ export default function App() {
             return;
           }
           
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
+          // Fetch latest profile from server
+          const res = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (res.ok) {
+            const serverUser = await res.json();
+            localStorage.setItem('user', JSON.stringify(serverUser));
+            setUser(serverUser);
+          } else {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+          }
         } catch (e) {
           console.error("Error parsing token or user:", e);
           handleLogout();

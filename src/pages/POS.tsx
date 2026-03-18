@@ -214,7 +214,8 @@ export default function POS() {
           items: cart.map(item => ({
             product_id: item.id,
             quantity: item.cartQuantity,
-            unit_price: item.sale_price
+            unit_price: item.sale_price,
+            product_name: item.name
           }))
         })
       });
@@ -235,7 +236,7 @@ export default function POS() {
             payment_status: paymentStatus,
             amount_paid: paymentStatus === 'paid' ? finalTotal : amountPaid,
             userName: user?.name || 'Vendeur',
-            shopName: user?.shop_name || 'Ma Boutique',
+            shopName: user?.shopName || 'Ma Boutique',
             currency: user?.currency || 'FCFA',
             items: cart.map(item => ({
               productName: item.name,

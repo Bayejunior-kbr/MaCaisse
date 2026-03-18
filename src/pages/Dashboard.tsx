@@ -126,8 +126,9 @@ export default function Dashboard() {
       if (response.text) {
         setAiInsight(response.text);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Quick insight error:", err);
+      setAiInsight(`Erreur IA: ${err.message || 'Impossible de générer des insights'}`);
     } finally {
       setAiLoading(false);
     }
