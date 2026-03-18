@@ -106,12 +106,13 @@
       "properties": {
         "sale_id": { "type": "string" },
         "product_id": { "type": "string" },
+        "product_name": { "type": "string" },
         "quantity": { "type": "integer" },
         "unit_price": { "type": "number" },
         "unit_profit": { "type": "number" },
         "total_price": { "type": "number" }
       },
-      "required": ["sale_id", "product_id", "quantity", "unit_price", "total_price"]
+      "required": ["sale_id", "quantity", "unit_price", "total_price"]
     },
     "CustomerPayment": {
       "title": "CustomerPayment",

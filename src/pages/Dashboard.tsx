@@ -28,6 +28,7 @@ import { formatCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { secureFetch } from '../lib/api';
 import { GoogleGenAI } from "@google/genai";
+import { getCleanApiKey } from '../lib/gemini-config';
 
 const StatCard = ({ title, value, icon: Icon, color, trend, trendValue }: any) => (
   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
@@ -106,15 +107,12 @@ export default function Dashboard() {
   const fetchQuickInsight = async (dashboardStats: any) => {
     setAiLoading(true);
     try {
-      let apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = getCleanApiKey();
       if (!apiKey) {
         console.warn("GEMINI_API_KEY is not set");
         return;
       }
       
-      // Clean up key
-      apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
-
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",

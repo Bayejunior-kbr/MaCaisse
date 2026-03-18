@@ -224,12 +224,32 @@ export default function POS() {
         
         if (res.status === 202) {
           // Offline mode
+          const offlineSale = {
+            id: Date.now(),
+            created_at: new Date().toISOString(),
+            total_amount: finalTotal,
+            total_profit: 0, // Not calculated offline
+            discount_amount: discount,
+            tax_amount: taxAmount,
+            payment_method: paymentMethod,
+            payment_status: paymentStatus,
+            amount_paid: paymentStatus === 'paid' ? finalTotal : amountPaid,
+            userName: user?.name || 'Vendeur',
+            shopName: user?.shop_name || 'Ma Boutique',
+            currency: user?.currency || 'FCFA',
+            items: cart.map(item => ({
+              productName: item.name,
+              quantity: item.cartQuantity,
+              unit_price: item.sale_price,
+              total_price: item.sale_price * item.cartQuantity
+            }))
+          };
+          setLastSale(offlineSale as any);
           alert("Vente enregistrée en mode hors-ligne. Elle sera synchronisée dès que la connexion sera rétablie.");
           setShowSuccess(true);
           setCart([]);
           setSelectedCustomer(null);
           setDiscount(0);
-          // We can't fetch products if offline, but secureFetch will handle it
           fetchProducts();
           return;
         }

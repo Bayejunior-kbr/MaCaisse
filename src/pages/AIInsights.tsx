@@ -20,6 +20,7 @@ import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from 'motion/react';
+import { getCleanApiKey } from '../lib/gemini-config';
 
 interface PathStep {
   title: string;
@@ -94,14 +95,11 @@ export default function AIInsights() {
       })).sort((a, b) => b.revenue - a.revenue).slice(0, 50); // Top 50 selling products
 
       // Call Gemini API directly from frontend
-      let apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
+      const apiKey = getCleanApiKey();
+      if (!apiKey || apiKey === "undefined") {
         throw new Error("Clé API Gemini manquante. Veuillez configurer GEMINI_API_KEY.");
       }
       
-      // Clean up key if it has quotes or whitespace
-      apiKey = apiKey.trim().replace(/^["']|["']$/g, '');
-
       const ai = new GoogleGenAI({ apiKey });
       const model = ai.models.generateContent({
         model: "gemini-3-flash-preview",

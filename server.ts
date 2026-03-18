@@ -355,7 +355,8 @@ const initDb = async () => {
         CREATE TABLE IF NOT EXISTS sale_items (
           id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
           sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-          product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+          product_name TEXT,
           quantity INTEGER NOT NULL,
           unit_price REAL NOT NULL,
           unit_profit REAL NOT NULL,
@@ -491,6 +492,7 @@ const initDb = async () => {
         { table: "subscription_requests", column: "payment_method", type: "TEXT" },
         { table: "subscription_requests", column: "phone_number", type: "TEXT" },
         { table: "subscription_requests", column: "transaction_ref", type: "TEXT" },
+        { table: "sale_items", column: "product_name", type: "TEXT" },
       ];
 
       // Get all existing columns in one query
@@ -545,6 +547,7 @@ const initDb = async () => {
         "ALTER TABLE subscription_requests ADD COLUMN payment_method TEXT",
         "ALTER TABLE subscription_requests ADD COLUMN phone_number TEXT",
         "ALTER TABLE subscription_requests ADD COLUMN transaction_ref TEXT",
+        "ALTER TABLE sale_items ADD COLUMN product_name TEXT",
       ];
       for (const sql of sqliteMigrations) {
         try { await db.run(sql); } catch (e) {}
@@ -1471,6 +1474,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           const profit = (item.unit_price - product.purchase_price) * item.quantity;
           totalProfit += profit;
           item.unit_profit = item.unit_price - product.purchase_price;
+          item.product_name = product.name;
         }
 
         const saleResult = await db.run(isPostgres 
@@ -1494,9 +1498,9 @@ const authenticate = async (req: any, res: any, next: any) => {
         for (const item of items) {
           const totalPrice = item.quantity * item.unit_price;
           await db.run(isPostgres 
-            ? "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit, total_price) VALUES ($1::int, $2::int, $3::numeric, $4::numeric, $5::numeric, $6::numeric)" 
-            : "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit, total_price) VALUES (?, ?, ?, ?, ?, ?)",
-            saleId, item.product_id, item.quantity, item.unit_price, item.unit_profit, totalPrice);
+            ? "INSERT INTO sale_items (sale_id, product_id, product_name, quantity, unit_price, unit_profit, total_price) VALUES ($1::int, $2::int, $3::text, $4::numeric, $5::numeric, $6::numeric, $7::numeric)" 
+            : "INSERT INTO sale_items (sale_id, product_id, product_name, quantity, unit_price, unit_profit, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            saleId, item.product_id, item.product_name, item.quantity, item.unit_price, item.unit_profit, totalPrice);
           await db.run(isPostgres ? "UPDATE products SET quantity = quantity - $1::numeric WHERE id = $2::int" : "UPDATE products SET quantity = quantity - ? WHERE id = ?", item.quantity, item.product_id);
           
           // Check for low stock after update
@@ -1673,13 +1677,13 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (!sale) return res.status(404).json({ error: "Vente non trouvée" });
 
       const items = await db.all(isPostgres
-        ? `SELECT si.*, p.name as productName
+        ? `SELECT si.*, COALESCE(si.product_name, p.name) as productName
           FROM sale_items si
-          JOIN products p ON si.product_id = p.id
+          LEFT JOIN products p ON si.product_id = p.id
           WHERE si.sale_id = $1::int`
-        : `SELECT si.*, p.name as productName
+        : `SELECT si.*, COALESCE(si.product_name, p.name) as productName
           FROM sale_items si
-          JOIN products p ON si.product_id = p.id
+          LEFT JOIN products p ON si.product_id = p.id
           WHERE si.sale_id = ?`,
         req.params.id);
 
@@ -1835,15 +1839,15 @@ const authenticate = async (req: any, res: any, next: any) => {
       const products = await db.all(isPostgres ? "SELECT * FROM products WHERE shop_id = $1::int" : "SELECT * FROM products WHERE shop_id = ?", shopId);
       
       const salesSql = isPostgres
-        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, p.name as productName
+        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as productName
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
-           JOIN products p ON si.product_id = p.id
+           LEFT JOIN products p ON si.product_id = p.id
            WHERE s.shop_id = $1::int AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'`
-        : `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, p.name as productName
+        : `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as productName
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
-           JOIN products p ON si.product_id = p.id
+           LEFT JOIN products p ON si.product_id = p.id
            WHERE s.shop_id = ? AND s.created_at >= date('now', '-30 days')`;
 
       const sales = await db.all(salesSql, shopId);

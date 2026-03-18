@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence } from 'motion/react';
+import { getCleanApiKey } from '../lib/gemini-config';
 import { ImageIcon, Loader2, Sparkles, Download, RefreshCw, AlertCircle, ShoppingBag } from 'lucide-react';
 
 const AI_MODEL = "gemini-2.5-flash-image";
@@ -14,7 +15,11 @@ export default function LogoGenerator() {
     setIsGenerating(true);
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = getCleanApiKey();
+      if (!apiKey || apiKey === "undefined") {
+        throw new Error("Clé API Gemini manquante. Veuillez configurer GEMINI_API_KEY.");
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: AI_MODEL,
         contents: {
