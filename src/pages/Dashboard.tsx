@@ -128,7 +128,11 @@ export default function Dashboard() {
       }
     } catch (err: any) {
       console.error("Quick insight error:", err);
-      setAiInsight(`Erreur IA: ${err.message || 'Impossible de générer des insights'}`);
+      let msg = err.message || 'Impossible de générer des insights';
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+        msg = "Quota d'IA épuisé.";
+      }
+      setAiInsight(`Erreur IA: ${msg}`);
     } finally {
       setAiLoading(false);
     }

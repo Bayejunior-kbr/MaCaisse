@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { getCleanApiKey } from '../lib/gemini-config';
 import { ImageIcon, Loader2, Sparkles, Download, RefreshCw, AlertCircle, ShoppingBag } from 'lucide-react';
 
-const AI_MODEL = "gemini-2.5-flash-image";
+const AI_MODEL = "gemini-3.1-flash-image-preview";
 
 export default function LogoGenerator() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -47,7 +47,11 @@ export default function LogoGenerator() {
       throw new Error("Aucune image n'a été générée.");
     } catch (err: any) {
       console.error("Logo generation failed:", err);
-      setError(err.message || "La génération du logo a échoué. Veuillez vérifier votre connexion ou réessayer plus tard.");
+      let msg = err.message || "La génération du logo a échoué.";
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+        msg = "Quota d'IA épuisé pour aujourd'hui. Veuillez réessayer demain ou passer à un forfait payant pour plus de limites.";
+      }
+      setError(msg);
     } finally {
       setIsGenerating(false);
     }

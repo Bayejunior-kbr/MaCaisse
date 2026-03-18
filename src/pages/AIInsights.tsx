@@ -143,7 +143,11 @@ export default function AIInsights() {
       }
     } catch (err: any) {
       console.error("AI Insights error:", err);
-      setError(err.message || "Une erreur est survenue lors de l'analyse");
+      let msg = err.message || "Une erreur est survenue lors de l'analyse";
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
+        msg = "Quota d'IA épuisé. Veuillez réessayer plus tard ou passer à un forfait payant.";
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
