@@ -276,6 +276,15 @@ const initDb = async () => {
       console.log("[DB] Initializing database schema...");
       const schema = `
         -- Schema initialization
+        CREATE TABLE IF NOT EXISTS verification_codes (
+          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+          email TEXT NOT NULL,
+          code TEXT NOT NULL,
+          expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} NOT NULL,
+          used INTEGER DEFAULT 0,
+          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS shops (
           id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
           name TEXT NOT NULL,
@@ -899,6 +908,101 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
+  app.post("/api/auth/send-code", async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email requis" });
+
+    try {
+      // Check if user exists
+      const user = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+      if (!user) {
+        return res.status(404).json({ error: "Aucun compte n'est associé à cet email." });
+      }
+
+      // Generate 6-digit code
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await db.run(isPostgres 
+        ? "INSERT INTO verification_codes (email, code, expires_at) VALUES ($1::text, $2::text, $3::timestamp)"
+        : "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+        email, code, expiresAt.toISOString());
+
+      // Simulate sending email
+      console.log(`[AUTH] Verification code for ${email}: ${code}`);
+      
+      // In a real app, you'd use nodemailer here
+      // await sendEmail(email, "Votre code de vérification", `Votre code est: ${code}`);
+
+      res.json({ message: "Code envoyé avec succès" });
+    } catch (e: any) {
+      console.error("Send code error:", e);
+      res.status(500).json({ error: "Erreur lors de l'envoi du code" });
+    }
+  });
+
+  app.post("/api/auth/verify-code", async (req, res) => {
+    const { email, code, password } = req.body;
+    if (!email || !code || !password) return res.status(400).json({ error: "Tous les champs sont requis" });
+
+    try {
+      // 1. Verify code
+      const verification = await db.get(isPostgres 
+        ? "SELECT * FROM verification_codes WHERE email = $1::text AND code = $2::text AND used = 0 AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1"
+        : "SELECT * FROM verification_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1",
+        email, code);
+
+      if (!verification) {
+        return res.status(400).json({ error: "Code invalide ou expiré" });
+      }
+
+      // 2. Verify user and password
+      const user = await db.get(isPostgres 
+        ? "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
+        : "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
+      
+      if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+        return res.status(401).json({ error: "Mot de passe incorrect" });
+      }
+
+      if (user.shopStatus === 'blocked' && user.role !== 'admin') {
+        return res.status(403).json({ error: "Votre compte a été bloqué par l'administrateur." });
+      }
+
+      // Mark code as used
+      await db.run(isPostgres 
+        ? "UPDATE verification_codes SET used = 1 WHERE id = $1::int"
+        : "UPDATE verification_codes SET used = 1 WHERE id = ?", verification.id);
+
+      const token = await new SignJWT({ userId: user.id, shopId: user.shop_id, role: user.role })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime("30d")
+        .sign(JWT_SECRET);
+      
+      res.json({ token, user: { 
+        id: user.id,
+        shopId: user.shop_id,
+        name: user.name, 
+        email: user.email, 
+        role: user.role, 
+        shopName: user.shopName || 'Administration Centrale', 
+        plan: user.plan || 'premium',
+        logo_url: user.logo_url,
+        theme: user.theme || 'dark',
+        language: user.language || 'fr',
+        currency: user.currency || 'FCFA',
+        receipt_footer: user.receipt_footer,
+        show_tax: !!user.show_tax,
+        sms_enabled: !!user.sms_enabled,
+        whatsapp_enabled: !!user.whatsapp_enabled,
+        notification_template: user.notification_template || ''
+      } });
+    } catch (e: any) {
+      console.error("Verify code error:", e);
+      res.status(500).json({ error: "Une erreur est survenue lors de la vérification." });
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -1070,7 +1174,7 @@ const authenticate = async (req: any, res: any, next: any) => {
         name: user.name, 
         email: user.email, 
         role: user.role, 
-        shopName: user.shopName, 
+        shopName: user.shopName || (user.role === 'admin' ? 'Administration Centrale' : 'Ma Boutique'), 
         plan: user.plan || 'free',
         logo_url: user.logo_url,
         theme: user.theme || 'light',
@@ -1589,7 +1693,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (req.user.role === 'employee') {
         try {
           const user = await db.get(isPostgres ? "SELECT name FROM users WHERE id = $1::int" : "SELECT name FROM users WHERE id = ?", userId);
-          const shop = await db.get(isPostgres ? "SELECT currency FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
+          const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
           await createNotification(
             shopId,
             'SALE_ALERT',
@@ -1680,14 +1784,16 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/sales/history", authenticate, async (req: any, res) => {
     try {
       const sales = await db.all(isPostgres 
-        ? `SELECT s.*, u.name as userName 
+        ? `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName
            FROM sales s 
            JOIN users u ON s.user_id = u.id 
+           LEFT JOIN shops sh ON s.shop_id = sh.id
            WHERE s.shop_id = $1::int 
            ORDER BY s.created_at DESC`
-        : `SELECT s.*, u.name as userName 
+        : `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName
            FROM sales s 
            JOIN users u ON s.user_id = u.id 
+           LEFT JOIN shops sh ON s.shop_id = sh.id
            WHERE s.shop_id = ? 
            ORDER BY s.created_at DESC`,
         req.user.shopId);
@@ -1701,18 +1807,18 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/sales/:id", authenticate, async (req: any, res) => {
     try {
       const sale = await db.get(isPostgres
-        ? `SELECT s.*, u.name as userName, sh.name as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
+        ? `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
                  c.name as customerName, c.phone as customerPhone, c.address as customerAddress
           FROM sales s 
           JOIN users u ON s.user_id = u.id 
-          JOIN shops sh ON s.shop_id = sh.id
+          LEFT JOIN shops sh ON s.shop_id = sh.id
           LEFT JOIN customers c ON s.customer_id = c.id
           WHERE s.id = $1::int AND s.shop_id = $2::int`
-        : `SELECT s.*, u.name as userName, sh.name as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
+        : `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
                  c.name as customerName, c.phone as customerPhone, c.address as customerAddress
           FROM sales s 
           JOIN users u ON s.user_id = u.id 
-          JOIN shops sh ON s.shop_id = sh.id
+          LEFT JOIN shops sh ON s.shop_id = sh.id
           LEFT JOIN customers c ON s.customer_id = c.id
           WHERE s.id = ? AND s.shop_id = ?`,
         req.params.id, req.user.shopId);
@@ -1720,11 +1826,11 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (!sale) return res.status(404).json({ error: "Vente non trouvée" });
 
       const items = await db.all(isPostgres
-        ? `SELECT si.*, COALESCE(si.product_name, p.name) as productName
+        ? `SELECT si.*, COALESCE(si.product_name, p.name, 'Produit Inconnu') as productName
           FROM sale_items si
           LEFT JOIN products p ON si.product_id = p.id
           WHERE si.sale_id = $1::int`
-        : `SELECT si.*, COALESCE(si.product_name, p.name) as productName
+        : `SELECT si.*, COALESCE(si.product_name, p.name, 'Produit Inconnu') as productName
           FROM sale_items si
           LEFT JOIN products p ON si.product_id = p.id
           WHERE si.sale_id = ?`,

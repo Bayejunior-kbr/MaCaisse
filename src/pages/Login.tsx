@@ -1,36 +1,59 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { User } from '../types';
-import { LogIn, Mail, Lock, Loader2, Store } from 'lucide-react';
+import { LogIn, Mail, Lock, Loader2, Store, CheckCircle2 } from 'lucide-react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 
 export default function Login({ onLogin }: { onLogin: (user: User, token: string) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [step, setStep] = useState(1); // 1: Credentials, 2: OTP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const handleSendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      const res = await fetch('/api/auth/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setStep(2);
+        setMessage('Un code de vérification a été envoyé à votre adresse email.');
+      } else {
+        setError(data.error || 'Erreur lors de l\'envoi du code');
+      }
+    } catch (err: any) {
+      setError(`Erreur de connexion. (${err.message})`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, code: verificationCode }),
       });
       
       if (!res.ok) {
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          const data = await res.json();
-          setError(data.error || `Erreur ${res.status}: ${res.statusText}`);
-        } else {
-          const text = await res.text();
-          setError(`Erreur ${res.status}: ${text.substring(0, 100)}`);
-        }
+        const data = await res.json();
+        setError(data.error || 'Code ou mot de passe incorrect');
         return;
       }
 
@@ -96,7 +119,13 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {message && (
+            <div className="mb-6 p-4 bg-emerald-50 text-emerald-600 rounded-2xl text-sm border border-emerald-100">
+              {message}
+            </div>
+          )}
+
+          <form onSubmit={step === 1 ? handleSendCode : handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Email</label>
               <div className="relative">
@@ -104,7 +133,8 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
                 <input
                   type="email"
                   required
-                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                  disabled={step === 2}
+                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50 disabled:opacity-50"
                   placeholder="votre@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -112,25 +142,42 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-bold text-slate-700">Mot de passe</label>
-                <Link to="/forgot-password" className="text-xs font-bold text-emerald-600 hover:underline">
-                  Mot de passe oublié ?
-                </Link>
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input
-                  type="password"
-                  required
-                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
+            {step === 2 && (
+              <>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Code de vérification (OTP)</label>
+                  <div className="relative">
+                    <CheckCircle2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                      placeholder="123456"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-bold text-slate-700">Mot de passe</label>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input
+                      type="password"
+                      required
+                      className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all bg-slate-50/50"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <button
               type="submit"
@@ -138,8 +185,18 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-emerald-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
-              Se connecter
+              {step === 1 ? 'Envoyer le code' : 'Se connecter'}
             </button>
+
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="w-full text-slate-500 text-xs font-bold hover:underline"
+              >
+                Modifier l'email
+              </button>
+            )}
           </form>
 
           <div className="relative my-10">
