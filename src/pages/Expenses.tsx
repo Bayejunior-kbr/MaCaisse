@@ -71,24 +71,29 @@ export default function Expenses() {
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await secureFetch('/api/expenses', {
+      const res = await secureFetch('/api/expenses', {
         method: 'POST',
         body: JSON.stringify({
           ...newExpense,
           amount: parseFloat(newExpense.amount)
         })
       });
-      setShowAddModal(false);
-      setNewExpense({
-        title: '',
-        amount: '',
-        category: 'Autre',
-        description: '',
-        date: format(new Date(), 'yyyy-MM-dd')
-      });
-      fetchExpenses();
+      if (res.ok) {
+        setShowAddModal(false);
+        setNewExpense({
+          title: '',
+          amount: '',
+          category: 'Autre',
+          description: '',
+          date: format(new Date(), 'yyyy-MM-dd')
+        });
+        fetchExpenses();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erreur lors de l\'ajout de la dépense');
+      }
     } catch (error) {
-      alert('Erreur lors de l\'ajout de la dépense');
+      alert('Erreur de connexion au serveur');
     }
   };
 

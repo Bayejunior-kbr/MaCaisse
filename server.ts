@@ -1484,8 +1484,11 @@ const authenticate = async (req: any, res: any, next: any) => {
         }
 
         for (const item of items) {
-          await db.run(isPostgres ? "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit) VALUES ($1::int, $2::int, $3::numeric, $4::numeric, $5::numeric)" : "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit) VALUES (?, ?, ?, ?, ?)",
-            saleId, item.product_id, item.quantity, item.unit_price, item.unit_profit);
+          const totalPrice = item.quantity * item.unit_price;
+          await db.run(isPostgres 
+            ? "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit, total_price) VALUES ($1::int, $2::int, $3::numeric, $4::numeric, $5::numeric, $6::numeric)" 
+            : "INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, unit_profit, total_price) VALUES (?, ?, ?, ?, ?, ?)",
+            saleId, item.product_id, item.quantity, item.unit_price, item.unit_profit, totalPrice);
           await db.run(isPostgres ? "UPDATE products SET quantity = quantity - $1::numeric WHERE id = $2::int" : "UPDATE products SET quantity = quantity - ? WHERE id = ?", item.quantity, item.product_id);
           
           // Check for low stock after update
@@ -2114,13 +2117,25 @@ const authenticate = async (req: any, res: any, next: any) => {
       await db.transaction(async () => {
         console.log(`[Approve] Updating request status...`);
         await db.run(isPostgres ? "UPDATE subscription_requests SET status = 'approved' WHERE id = $1::int" : "UPDATE subscription_requests SET status = 'approved' WHERE id = ?", requestId);
-        console.log(`[Approve] Updating shop plan...`);
+        
+        console.log(`[Approve] Fetching current shop status...`);
+        const shop = await db.get(isPostgres ? "SELECT plan, subscription_expires_at FROM shops WHERE id = $1::int" : "SELECT plan, subscription_expires_at FROM shops WHERE id = ?", request.shop_id);
         
         const durationMonths = request.duration_months || 1;
-        const expiresAt = new Date();
+        let expiresAt = new Date();
+        
+        // If shop already has an active subscription, extend it from the current expiry date
+        if (shop && shop.plan !== 'free' && shop.subscription_expires_at) {
+          const currentExpiry = new Date(shop.subscription_expires_at);
+          if (currentExpiry > new Date()) {
+            expiresAt = currentExpiry;
+          }
+        }
+        
         expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
         const expiresAtStr = expiresAt.toISOString().replace('T', ' ').replace('Z', '');
 
+        console.log(`[Approve] Updating shop plan to ${request.plan}, expires at ${expiresAtStr}`);
         await db.run(isPostgres 
           ? "UPDATE shops SET plan = $1::text, subscription_expires_at = $2::timestamp, status = 'active' WHERE id = $3::int" 
           : "UPDATE shops SET plan = ?, subscription_expires_at = ?, status = 'active' WHERE id = ?", 

@@ -74,9 +74,13 @@ export default function Subscription({ user, onUpdateUser }: { user: User, onUpd
         setTransactionRef('');
         fetchRequests();
         alert("Votre demande a été envoyée ! Elle sera validée par l'administrateur après vérification du paiement.");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Une erreur est survenue lors de l'envoi de la demande.");
       }
     } catch (err) {
       console.error(err);
+      alert("Erreur de connexion au serveur.");
     } finally {
       setLoading(false);
     }
