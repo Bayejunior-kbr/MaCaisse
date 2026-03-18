@@ -2283,8 +2283,14 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   app.post("/api/expenses", authenticate, async (req: any, res) => {
     try {
-      const { title, amount, category, description, date } = req.body;
-      if (!title || amount === undefined || amount === null || !category) {
+      let { title, amount, category, description, date } = req.body;
+      
+      // Ensure amount is a number if it's a string
+      if (typeof amount === 'string') {
+        amount = parseFloat(amount.replace(',', '.'));
+      }
+
+      if (!title || amount === undefined || amount === null || isNaN(amount) || !category) {
         return res.status(400).json({ error: "Le titre, le montant et la catégorie sont obligatoires." });
       }
       const result = await db.run(isPostgres 

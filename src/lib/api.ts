@@ -6,10 +6,14 @@ export async function secureFetch(url: string, options: any = {}) {
   const isGet = !options.method || options.method.toUpperCase() === 'GET';
   const isSync = options._isSync === true;
   
-  const headers = {
+  const headers: any = {
     ...options.headers,
     'Authorization': `Bearer ${token}`
   };
+
+  if (options.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   // If offline and it's a GET request, try to return from cache
   if (!isOnline() && isGet) {

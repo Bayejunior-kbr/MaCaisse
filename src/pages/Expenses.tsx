@@ -70,12 +70,18 @@ export default function Expenses() {
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
+    const amountNum = parseFloat(newExpense.amount.replace(',', '.'));
+    if (isNaN(amountNum)) {
+      alert('Veuillez entrer un montant valide');
+      return;
+    }
+
     try {
       const res = await secureFetch('/api/expenses', {
         method: 'POST',
         body: JSON.stringify({
           ...newExpense,
-          amount: parseFloat(newExpense.amount)
+          amount: amountNum
         })
       });
       if (res.ok) {
