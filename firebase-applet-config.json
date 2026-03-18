@@ -1,10 +1,10 @@
 {
-  "projectId": "shopmaster-pro-8f042",
-  "appId": "1:1039628380557:web:6c032e1227c0aa8e48b5c4",
-  "apiKey": "AIzaSyDQRpc8mYexswI6ge_BloqP9wPf-i7G3r4",
-  "authDomain": "shopmaster-pro-8f042.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "shopmaster-pro-8f042.firebasestorage.app",
-  "messagingSenderId": "1039628380557",
-  "measurementId": "G-3C8JGXXPJ1"
+  "projectId": "gen-lang-client-0621874704",
+  "appId": "1:944468983496:web:76f071d31ba313a326affd",
+  "apiKey": "AIzaSyCBA5VRK1zISX6kle1NNQw0hhVkUFvzep0",
+  "authDomain": "gen-lang-client-0621874704.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-6efd3557-66b4-4d0f-935f-393790314f8c",
+  "storageBucket": "gen-lang-client-0621874704.firebasestorage.app",
+  "messagingSenderId": "944468983496",
+  "measurementId": ""
 }

@@ -487,6 +487,10 @@ const initDb = async () => {
         { table: "customers", column: "phone", type: "TEXT" },
         { table: "customers", column: "email", type: "TEXT" },
         { table: "customers", column: "address", type: "TEXT" },
+        { table: "subscription_requests", column: "duration_months", type: "INTEGER DEFAULT 1" },
+        { table: "subscription_requests", column: "payment_method", type: "TEXT" },
+        { table: "subscription_requests", column: "phone_number", type: "TEXT" },
+        { table: "subscription_requests", column: "transaction_ref", type: "TEXT" },
       ];
 
       // Get all existing columns in one query
@@ -537,6 +541,10 @@ const initDb = async () => {
         "ALTER TABLE customers ADD COLUMN phone TEXT",
         "ALTER TABLE customers ADD COLUMN email TEXT",
         "ALTER TABLE customers ADD COLUMN address TEXT",
+        "ALTER TABLE subscription_requests ADD COLUMN duration_months INTEGER DEFAULT 1",
+        "ALTER TABLE subscription_requests ADD COLUMN payment_method TEXT",
+        "ALTER TABLE subscription_requests ADD COLUMN phone_number TEXT",
+        "ALTER TABLE subscription_requests ADD COLUMN transaction_ref TEXT",
       ];
       for (const sql of sqliteMigrations) {
         try { await db.run(sql); } catch (e) {}
@@ -2276,6 +2284,9 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.post("/api/expenses", authenticate, async (req: any, res) => {
     try {
       const { title, amount, category, description, date } = req.body;
+      if (!title || amount === undefined || amount === null || !category) {
+        return res.status(400).json({ error: "Le titre, le montant et la catégorie sont obligatoires." });
+      }
       const result = await db.run(isPostgres 
         ? "INSERT INTO expenses (shop_id, user_id, title, amount, category, description, date) VALUES ($1::int, $2::int, $3::text, $4::numeric, $5::text, $6::text, $7::timestamp) RETURNING id"
         : "INSERT INTO expenses (shop_id, user_id, title, amount, category, description, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
