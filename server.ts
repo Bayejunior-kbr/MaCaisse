@@ -1299,7 +1299,7 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/auth/me", authenticate, async (req: any, res) => {
     try {
       const user = await db.get(isPostgres 
-        ? `SELECT u.*, sh.name as shopName, sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
+        ? `SELECT u.*, sh.name as "shopName", sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
            FROM users u 
            LEFT JOIN shops sh ON u.shop_id = sh.id 
            WHERE u.id = $1::int`
@@ -1576,9 +1576,9 @@ const authenticate = async (req: any, res: any, next: any) => {
       let data: any[] = [];
       
       if (type === "sales") {
-        data = await db.all(isPostgres ? "SELECT s.*, u.name as userName, c.name as customerName FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN customers c ON s.customer_id = c.id WHERE s.shop_id = $1::int ORDER BY s.created_at DESC" : "SELECT s.*, u.name as userName, c.name as customerName FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN customers c ON s.customer_id = c.id WHERE s.shop_id = ? ORDER BY s.created_at DESC", req.user.shopId);
+        data = await db.all(isPostgres ? "SELECT s.*, u.name as \"userName\", c.name as \"customerName\" FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN customers c ON s.customer_id = c.id WHERE s.shop_id = $1::int ORDER BY s.created_at DESC" : "SELECT s.*, u.name as userName, c.name as customerName FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN customers c ON s.customer_id = c.id WHERE s.shop_id = ? ORDER BY s.created_at DESC", req.user.shopId);
       } else if (type === "products") {
-        data = await db.all(isPostgres ? "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = $1::int ORDER BY p.name ASC" : "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = ? ORDER BY p.name ASC", req.user.shopId);
+        data = await db.all(isPostgres ? "SELECT p.*, c.name as \"categoryName\", s.name as \"supplierName\" FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = $1::int ORDER BY p.name ASC" : "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = ? ORDER BY p.name ASC", req.user.shopId);
       } else {
         return res.status(400).json({ error: "Invalid export type" });
       }
@@ -1609,7 +1609,7 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/products", authenticate, async (req: any, res) => {
     try {
       const products = await db.all(isPostgres 
-        ? "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = $1::int" 
+        ? "SELECT p.*, c.name as \"categoryName\", s.name as \"supplierName\" FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = $1::int" 
         : "SELECT p.*, c.name as categoryName, s.name as supplierName FROM products p LEFT JOIN categories c ON p.category_id = c.id LEFT JOIN suppliers s ON p.supplier_id = s.id WHERE p.shop_id = ?", 
         req.user.shopId);
       res.json(products);
@@ -1974,7 +1974,7 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/sales/history", authenticate, async (req: any, res) => {
     try {
       const sales = await db.all(isPostgres 
-        ? `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName
+        ? `SELECT s.*, u.name as "userName", COALESCE(sh.name, 'Boutique Inconnue') as "shopName"
            FROM sales s 
            JOIN users u ON s.user_id = u.id 
            LEFT JOIN shops sh ON s.shop_id = sh.id
@@ -2016,7 +2016,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (!sale) return res.status(404).json({ error: "Vente non trouvée" });
 
       const items = await db.all(isPostgres
-        ? `SELECT si.*, COALESCE(si.product_name, p.name, 'Produit Inconnu') as productName
+        ? `SELECT si.*, COALESCE(si.product_name, p.name, 'Produit Inconnu') as "productName"
           FROM sale_items si
           LEFT JOIN products p ON si.product_id = p.id
           WHERE si.sale_id = $1::int`
@@ -2178,7 +2178,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       const products = await db.all(isPostgres ? "SELECT * FROM products WHERE shop_id = $1::int" : "SELECT * FROM products WHERE shop_id = ?", shopId);
       
       const salesSql = isPostgres
-        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as productName
+        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as "productName"
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
            LEFT JOIN products p ON si.product_id = p.id

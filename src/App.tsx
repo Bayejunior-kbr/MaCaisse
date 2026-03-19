@@ -91,13 +91,7 @@ const SidebarGroup = ({ label, icon: Icon, children, active }: { label: string, 
   }, [active]);
 
   return (
-    <div 
-      className="space-y-1"
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => {
-        if (!active) setIsOpen(false);
-      }}
-    >
+    <div className="space-y-1">
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className={cn(

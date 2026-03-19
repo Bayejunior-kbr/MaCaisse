@@ -230,7 +230,7 @@ export default function BarcodeGenerator() {
                     )}
                     
                     <Barcode 
-                      value={selectedProduct.barcode || '000000000000'}
+                      value={selectedProduct.barcode || 'NO-BARCODE'}
                       format={settings.format}
                       width={settings.width}
                       height={settings.height}
