@@ -919,7 +919,13 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (!email) return res.status(400).json({ error: "Email requis." });
 
       // Check if user already exists
-      const existingUser = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+      let existingUser;
+      try {
+        existingUser = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+      } catch (dbErr: any) {
+        throw new Error(`Erreur base de données (check user): ${dbErr.message}`);
+      }
+
       if (existingUser) {
         return res.status(400).json({ error: "Cet email est déjà utilisé." });
       }
@@ -927,12 +933,20 @@ const authenticate = async (req: any, res: any, next: any) => {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      await db.run(isPostgres ? 
-        "INSERT INTO verification_codes (email, code, expires_at) VALUES ($1::text, $2::text, $3::timestamp)" : 
-        "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
-        email, code, isPostgres ? expiresAt : expiresAt.toISOString());
+      try {
+        await db.run(isPostgres ? 
+          "INSERT INTO verification_codes (email, code, expires_at) VALUES ($1::text, $2::text, $3::timestamp)" : 
+          "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+          email, code, isPostgres ? expiresAt : expiresAt.toISOString());
+      } catch (dbErr: any) {
+        throw new Error(`Erreur base de données (insert code): ${dbErr.message}`);
+      }
 
-      await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la création de votre boutique est : ${code}`);
+      try {
+        await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la création de votre boutique est : ${code}`);
+      } catch (mailErr: any) {
+        throw new Error(`Erreur envoi email: ${mailErr.message}`);
+      }
       
       res.json({ message: "Code envoyé avec succès." });
     } catch (e: any) {
@@ -1018,7 +1032,13 @@ const authenticate = async (req: any, res: any, next: any) => {
 
     try {
       // Check if user exists
-      const user = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+      let user;
+      try {
+        user = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+      } catch (dbErr: any) {
+        throw new Error(`Erreur base de données (check user): ${dbErr.message}`);
+      }
+
       if (!user) {
         return res.status(404).json({ error: "Aucun compte n'est associé à cet email." });
       }
@@ -1027,12 +1047,20 @@ const authenticate = async (req: any, res: any, next: any) => {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      await db.run(isPostgres 
-        ? "INSERT INTO verification_codes (email, code, expires_at) VALUES ($1::text, $2::text, $3::timestamp)"
-        : "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
-        email, code, expiresAt.toISOString());
+      try {
+        await db.run(isPostgres 
+          ? "INSERT INTO verification_codes (email, code, expires_at) VALUES ($1::text, $2::text, $3::timestamp)"
+          : "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+          email, code, expiresAt.toISOString());
+      } catch (dbErr: any) {
+        throw new Error(`Erreur base de données (insert code): ${dbErr.message}`);
+      }
 
-      await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la connexion est : ${code}`);
+      try {
+        await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la connexion est : ${code}`);
+      } catch (mailErr: any) {
+        throw new Error(`Erreur envoi email: ${mailErr.message}`);
+      }
       
       res.json({ message: "Code envoyé avec succès" });
     } catch (e: any) {
