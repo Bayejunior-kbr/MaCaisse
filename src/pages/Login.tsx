@@ -97,7 +97,8 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
       } else if (err.code === 'auth/popup-closed-by-user') {
         // No error message needed if user closed it
       } else if (err.code === 'auth/unauthorized-domain') {
-        setError('Ce domaine n\'est pas autorisé pour l\'authentification Google. Veuillez contacter l\'administrateur.');
+        const domain = window.location.hostname;
+        setError(`Ce domaine (${domain}) n'est pas autorisé pour l'authentification Google. Veuillez l'ajouter dans la console Firebase (Authentification -> Paramètres -> Domaines autorisés).`);
       } else {
         setError(`Erreur lors de la connexion Google: ${err.message || 'Erreur inconnue'}`);
       }
