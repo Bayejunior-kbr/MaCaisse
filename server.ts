@@ -2837,42 +2837,44 @@ const authenticate = async (req: any, res: any, next: any) => {
     setInterval(runSubscriptionAutomation, 24 * 60 * 60 * 1000);
     // Also run once on startup after a short delay
     setTimeout(runSubscriptionAutomation, 10000);
+  }
 
-    const server = http.createServer(app);
-    try {
-      const { WebSocketServer } = await import("ws");
-      const wss = new WebSocketServer({ server });
+  const server = http.createServer(app);
+  try {
+    const { WebSocketServer } = await import("ws");
+    const wss = new WebSocketServer({ server });
 
-      wss.on('connection', (ws, req) => {
-        const url = new URL(req.url || '', `http://${req.headers.host}`);
-        const token = url.searchParams.get('token');
+    wss.on('connection', (ws, req) => {
+      const url = new URL(req.url || '', `http://${req.headers.host}`);
+      const token = url.searchParams.get('token');
 
-        if (!token) {
-          ws.close();
-          return;
+      if (!token) {
+        ws.close();
+        return;
+      }
+
+      jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
+        const shopId = payload.shopId;
+        if (!clients.has(shopId)) {
+          clients.set(shopId, new Set());
         }
+        clients.get(shopId)!.add(ws);
 
-        jwtVerify(token, JWT_SECRET).then(({ payload }: any) => {
-          const shopId = payload.shopId;
-          if (!clients.has(shopId)) {
-            clients.set(shopId, new Set());
+        ws.on('close', () => {
+          clients.get(shopId)?.delete(ws);
+          if (clients.get(shopId)?.size === 0) {
+            clients.delete(shopId);
           }
-          clients.get(shopId)!.add(ws);
-
-          ws.on('close', () => {
-            clients.get(shopId)?.delete(ws);
-            if (clients.get(shopId)?.size === 0) {
-              clients.delete(shopId);
-            }
-          });
-        }).catch(() => {
-          ws.close();
         });
+      }).catch(() => {
+        ws.close();
       });
-    } catch (e) {
-      console.error("Failed to load WebSocket server:", e);
-    }
+    });
+  } catch (e) {
+    console.error("Failed to load WebSocket server:", e);
+  }
 
+  if (!process.env.VERCEL) {
     const PORT = 3000;
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
@@ -2884,10 +2886,17 @@ const authenticate = async (req: any, res: any, next: any) => {
   }
 }
 
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('[Server] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // Start the server setup (top-level await)
-if (!process.env.VERCEL) {
-  startServerSetup().catch(err => console.error("Startup error:", err));
-}
+startServerSetup().catch(err => console.error("Startup error:", err));
 
 console.log("[Server] Module loaded and ready.");
 export default app;

@@ -90,16 +90,49 @@ export default function Inventory() {
     // Convert image to base64 if a new file is selected
     if (selectedFile) {
       try {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(selectedFile);
-        });
-        currentImageUrl = base64;
+        // Simple image compression using Canvas
+        const compressImage = (file: File): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+              const img = new Image();
+              img.src = event.target?.result as string;
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                const MAX_HEIGHT = 800;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                  if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                  }
+                } else {
+                  if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height;
+                    height = MAX_HEIGHT;
+                  }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                // Compress to JPEG with 0.7 quality
+                resolve(canvas.toDataURL('image/jpeg', 0.7));
+              };
+              img.onerror = reject;
+            };
+            reader.onerror = reject;
+          });
+        };
+
+        currentImageUrl = await compressImage(selectedFile);
       } catch (err) {
-        console.error("Base64 conversion error:", err);
-        alert("Erreur lors de la lecture de l'image");
+        console.error("Image processing error:", err);
+        alert("Erreur lors du traitement de l'image. Essayez une image plus petite.");
         setUploading(false);
         return;
       }
@@ -140,9 +173,13 @@ export default function Inventory() {
         console.error("Save product error:", errorData);
         alert(`Erreur: ${errorData.error || 'Une erreur est survenue lors de l\'enregistrement'}`);
       }
-    } catch (err) {
-      console.error(err);
-      alert("Erreur de connexion au serveur");
+    } catch (err: any) {
+      console.error("Fetch error:", err);
+      if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+        alert("Erreur de connexion au serveur. L'image est peut-être trop lourde pour Vercel (max 4.5MB).");
+      } else {
+        alert("Erreur de connexion au serveur : " + err.message);
+      }
     } finally {
       setUploading(false);
     }
