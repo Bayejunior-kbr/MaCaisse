@@ -12,6 +12,14 @@ import http from "http";
 import pg from "pg";
 import { AsyncLocalStorage } from 'async_hooks';
 
+import nodemailer from "nodemailer";
+
+// Fix BigInt serialization for JSON.stringify
+(BigInt.prototype as any).toJSON = function() {
+  const num = Number(this);
+  return Number.isSafeInteger(num) ? num : this.toString();
+};
+
 console.log("[Server] Initializing module...");
 const { Pool } = pg;
 
@@ -68,6 +76,51 @@ if (dbUrl) {
 }
 
 const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.password));
+
+// Email Transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.EMAIL_PORT || "587"),
+  secure: (process.env.EMAIL_PORT === "465"),
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Verify SMTP connection on startup
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error("[Email] SMTP Connection Error:", error.message);
+      console.error("[Email] Please check your EMAIL_USER and EMAIL_PASS secrets.");
+    } else {
+      console.log("[Email] SMTP Server is ready to take our messages");
+    }
+  });
+} else {
+  console.warn("[Email] EMAIL_USER or EMAIL_PASS not set. Email sending will be simulated in console.");
+}
+
+const sendEmail = async (to: string, subject: string, text: string) => {
+  console.log(`[Email Debug] To: ${to}, Subject: ${subject}, Body: ${text}`);
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn("[Email] No email credentials provided. Logging code to console instead.");
+    return;
+  }
+  try {
+    await transporter.sendMail({
+      from: `"ShopMaster" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      text,
+    });
+    console.log(`[Email] Sent to ${to}`);
+  } catch (error) {
+    console.error("[Email] Error sending email:", error);
+    throw new Error("Erreur lors de l'envoi de l'email.");
+  }
+};
 
 console.log("[Server] Database configuration:", { 
   mode: isPostgres ? "PostgreSQL" : "SQLite",
@@ -272,195 +325,196 @@ const initDb = async () => {
     
     console.log(`[DB] Table 'shops' exists: ${!!tableExists}`);
 
+    const schema = `
+      -- Schema initialization
+      CREATE TABLE IF NOT EXISTS verification_codes (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        email TEXT NOT NULL,
+        code TEXT NOT NULL,
+        expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} NOT NULL,
+        used INTEGER DEFAULT 0,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS shops (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        name TEXT NOT NULL,
+        plan TEXT DEFAULT 'free',
+        logo_url TEXT,
+        theme TEXT DEFAULT 'light',
+        language TEXT DEFAULT 'fr',
+        currency TEXT DEFAULT 'FCFA',
+        receipt_footer TEXT,
+        show_tax INTEGER DEFAULT 0,
+        sms_enabled INTEGER DEFAULT 0,
+        whatsapp_enabled INTEGER DEFAULT 0,
+        notification_template TEXT,
+        status TEXT DEFAULT 'active',
+        is_signaled INTEGER DEFAULT 0,
+        subscription_expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
+        has_ai_features INTEGER DEFAULT 0,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS users (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'employee',
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS categories (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        name TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS products (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+        name TEXT NOT NULL,
+        barcode TEXT,
+        image_url TEXT,
+        purchase_price REAL NOT NULL,
+        sale_price REAL NOT NULL,
+        quantity INTEGER DEFAULT 0,
+        min_quantity INTEGER DEFAULT 5,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS customers (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        total_debt REAL DEFAULT 0,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sales (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        total_amount REAL NOT NULL,
+        total_profit REAL NOT NULL,
+        tax_amount REAL DEFAULT 0,
+        discount_amount REAL DEFAULT 0,
+        payment_method TEXT DEFAULT 'cash',
+        payment_status TEXT DEFAULT 'paid',
+        amount_paid REAL DEFAULT 0,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_items (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+        product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name TEXT,
+        quantity INTEGER NOT NULL,
+        unit_price REAL NOT NULL,
+        unit_profit REAL NOT NULL,
+        total_price REAL NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS customer_payments (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount REAL NOT NULL,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read INTEGER DEFAULT 0,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS subscription_requests (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        plan TEXT NOT NULL,
+        duration_months INTEGER DEFAULT 1,
+        payment_method TEXT,
+        phone_number TEXT,
+        transaction_ref TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS expenses (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT,
+        date ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        details TEXT,
+        ip_address TEXT,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS platform_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        contact_name TEXT,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS broadcasts (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT DEFAULT 'SYSTEM',
+        target_shop_id INTEGER REFERENCES shops(id) ON DELETE SET NULL,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+    
+    try {
+      await db.exec(schema);
+      console.log("[DB] Database schema ensured.");
+    } catch (schemaErr: any) {
+      console.error("[DB] Failed to execute schema:", schemaErr.message);
+      throw new Error(`Schema initialization failed: ${schemaErr.message}`);
+    }
+
     if (!tableExists) {
-      console.log("[DB] Initializing database schema...");
-      const schema = `
-        -- Schema initialization
-        CREATE TABLE IF NOT EXISTS verification_codes (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          email TEXT NOT NULL,
-          code TEXT NOT NULL,
-          expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} NOT NULL,
-          used INTEGER DEFAULT 0,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS shops (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          name TEXT NOT NULL,
-          plan TEXT DEFAULT 'free',
-          logo_url TEXT,
-          theme TEXT DEFAULT 'light',
-          language TEXT DEFAULT 'fr',
-          currency TEXT DEFAULT 'FCFA',
-          receipt_footer TEXT,
-          show_tax INTEGER DEFAULT 0,
-          sms_enabled INTEGER DEFAULT 0,
-          whatsapp_enabled INTEGER DEFAULT 0,
-          notification_template TEXT,
-          status TEXT DEFAULT 'active',
-          is_signaled INTEGER DEFAULT 0,
-          subscription_expires_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
-          has_ai_features INTEGER DEFAULT 0,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS users (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER REFERENCES shops(id) ON DELETE CASCADE,
-          name TEXT NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          role TEXT DEFAULT 'employee',
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS categories (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          name TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS products (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-          name TEXT NOT NULL,
-          barcode TEXT,
-          image_url TEXT,
-          purchase_price REAL NOT NULL,
-          sale_price REAL NOT NULL,
-          quantity INTEGER DEFAULT 0,
-          min_quantity INTEGER DEFAULT 5,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS customers (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          name TEXT NOT NULL,
-          phone TEXT,
-          email TEXT,
-          address TEXT,
-          total_debt REAL DEFAULT 0,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS sales (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
-          total_amount REAL NOT NULL,
-          total_profit REAL NOT NULL,
-          tax_amount REAL DEFAULT 0,
-          discount_amount REAL DEFAULT 0,
-          payment_method TEXT DEFAULT 'cash',
-          payment_status TEXT DEFAULT 'paid',
-          amount_paid REAL DEFAULT 0,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS sale_items (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-          product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
-          product_name TEXT,
-          quantity INTEGER NOT NULL,
-          unit_price REAL NOT NULL,
-          unit_profit REAL NOT NULL,
-          total_price REAL NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS customer_payments (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          amount REAL NOT NULL,
-          payment_method TEXT DEFAULT 'cash',
-          notes TEXT,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS notifications (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          type TEXT NOT NULL,
-          title TEXT NOT NULL,
-          message TEXT NOT NULL,
-          is_read INTEGER DEFAULT 0,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS subscription_requests (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-          plan TEXT NOT NULL,
-          duration_months INTEGER DEFAULT 1,
-          payment_method TEXT,
-          phone_number TEXT,
-          transaction_ref TEXT,
-          status TEXT DEFAULT 'pending',
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS expenses (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          title TEXT NOT NULL,
-          amount REAL NOT NULL,
-          category TEXT NOT NULL,
-          description TEXT,
-          date ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS audit_logs (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-          action TEXT NOT NULL,
-          details TEXT,
-          ip_address TEXT,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS platform_settings (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL,
-          updated_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS suppliers (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-          name TEXT NOT NULL,
-          contact_name TEXT,
-          phone TEXT,
-          email TEXT,
-          address TEXT,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS broadcasts (
-          id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-          title TEXT NOT NULL,
-          message TEXT NOT NULL,
-          type TEXT DEFAULT 'SYSTEM',
-          target_shop_id INTEGER REFERENCES shops(id) ON DELETE SET NULL,
-          created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-        );
-      `;
-      
-      try {
-        await db.exec(schema);
-        console.log("[DB] Database schema initialized.");
-      } catch (schemaErr: any) {
-        console.error("[DB] Failed to execute schema:", schemaErr.message);
-        throw new Error(`Schema initialization failed: ${schemaErr.message}`);
-      }
+      console.log("[DB] No existing tables found. Initializing default data...");
     }
   } catch (e: any) {
     console.error("[DB] Initialization error:", e.message);
@@ -677,7 +731,7 @@ const createNotification = async (shopId: number, type: string, title: string, m
         : "INSERT INTO notifications (shop_id, type, title, message) VALUES (?, ?, ?, ?)",
       shopId, type, title, message
     );
-    const notification = { id: isPostgres ? (id as any).rows[0].id : (id as any).lastID, shop_id: shopId, type, title, message, is_read: 0, created_at: new Date().toISOString() };
+    const notification = { id: isPostgres ? (id as any).rows[0].id : (id as any).lastInsertRowid, shop_id: shopId, type, title, message, is_read: 0, created_at: new Date().toISOString() };
     broadcastToShop(shopId, { type: 'NOTIFICATION', payload: notification });
     return notification;
   } catch (e) {
@@ -853,21 +907,74 @@ const authenticate = async (req: any, res: any, next: any) => {
   };
 
   // Auth Routes
-  app.post("/api/auth/register", async (req, res) => {
-    const { shopName, name, email, password } = req.body;
-    if (!shopName || !name || !email || !password) {
-      return res.status(400).json({ error: "Tous les champs sont obligatoires." });
-    }
-    
-    // Password complexity check
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) {
-      return res.status(400).json({ 
-        error: "Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre." 
+  app.get("/api/auth/test-email", async (req, res) => {
+    try {
+      await transporter.verify();
+      res.json({ success: true, message: "La configuration email est correcte. Le serveur SMTP est prêt." });
+    } catch (error: any) {
+      console.error("[Email Test] Error:", error.message);
+      res.status(500).json({ 
+        success: false, 
+        error: "Erreur de connexion SMTP.", 
+        details: error.message,
+        hint: "Vérifiez votre EMAIL_USER et EMAIL_PASS. Si vous utilisez Gmail, assurez-vous d'utiliser un 'Mot de passe d'application'."
       });
     }
+  });
 
+  app.post("/api/auth/send-registration-code", async (req, res) => {
     try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "Email requis." });
+
+      // Check if user already exists
+      const existingUser = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+      if (existingUser) {
+        return res.status(400).json({ error: "Cet email est déjà utilisé." });
+      }
+
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await db.run(isPostgres ? 
+        "INSERT INTO verification_codes (email, code, expires_at) VALUES ($1::text, $2::text, $3::timestamp)" : 
+        "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+        email, code, isPostgres ? expiresAt : expiresAt.toISOString());
+
+      await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la création de votre boutique est : ${code}`);
+      
+      res.json({ message: "Code envoyé avec succès." });
+    } catch (e: any) {
+      console.error("Send registration code error:", e);
+      res.status(500).json({ error: e.message || "Erreur lors de l'envoi du code." });
+    }
+  });
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { shopName, name, email, password, code } = req.body;
+      if (!shopName || !name || !email || !password || !code) {
+        return res.status(400).json({ error: "Tous les champs sont obligatoires." });
+      }
+
+      // Verify code
+      const verification = await db.get(isPostgres ? 
+        "SELECT id FROM verification_codes WHERE email = $1::text AND code = $2::text AND used = 0 AND expires_at > NOW()" : 
+        "SELECT id FROM verification_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > datetime('now')",
+        email, code);
+
+      if (!verification) {
+        return res.status(400).json({ error: "Code de vérification invalide ou expiré." });
+      }
+      
+      // Password complexity check
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+      if (!passwordRegex.test(password)) {
+        return res.status(400).json({ 
+          error: "Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule et un chiffre." 
+        });
+      }
+
       const shopResult = await db.run(isPostgres ? "INSERT INTO shops (name) VALUES ($1::text) RETURNING id" : "INSERT INTO shops (name) VALUES (?)", shopName);
       const shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
       
@@ -878,6 +985,12 @@ const authenticate = async (req: any, res: any, next: any) => {
         shopId, name, email, passwordHash, "owner");
       
       const userId = isPostgres ? userResult.rows[0].id : userResult.lastInsertRowid;
+
+      // Mark code as used
+      await db.run(isPostgres ? 
+        "UPDATE verification_codes SET used = 1 WHERE id = $1::int" : 
+        "UPDATE verification_codes SET used = 1 WHERE id = ?",
+        verification.id);
 
       const token = await new SignJWT({ userId, shopId, role: "owner" })
         .setProtectedHeader({ alg: "HS256" })
@@ -904,7 +1017,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (e.message.includes("unique constraint") || e.message.includes("UNIQUE constraint")) {
         return res.status(400).json({ error: "Cet email est déjà utilisé par un autre compte." });
       }
-      res.status(400).json({ error: e.message });
+      res.status(500).json({ error: e.message || "Erreur lors de l'inscription." });
     }
   });
 
@@ -928,12 +1041,8 @@ const authenticate = async (req: any, res: any, next: any) => {
         : "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
         email, code, expiresAt.toISOString());
 
-      // Simulate sending email
-      console.log(`[AUTH] Verification code for ${email}: ${code}`);
+      await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la connexion est : ${code}`);
       
-      // In a real app, you'd use nodemailer here
-      // await sendEmail(email, "Votre code de vérification", `Votre code est: ${code}`);
-
       res.json({ message: "Code envoyé avec succès" });
     } catch (e: any) {
       console.error("Send code error:", e);
@@ -942,10 +1051,10 @@ const authenticate = async (req: any, res: any, next: any) => {
   });
 
   app.post("/api/auth/verify-code", async (req, res) => {
-    const { email, code, password } = req.body;
-    if (!email || !code || !password) return res.status(400).json({ error: "Tous les champs sont requis" });
-
     try {
+      const { email, code, password } = req.body;
+      if (!email || !code || !password) return res.status(400).json({ error: "Tous les champs sont requis" });
+
       // 1. Verify code
       const verification = await db.get(isPostgres 
         ? "SELECT * FROM verification_codes WHERE email = $1::text AND code = $2::text AND used = 0 AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1"

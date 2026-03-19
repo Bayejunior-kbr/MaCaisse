@@ -21,7 +21,7 @@ import {
   ChevronDown,
   ShieldCheck,
   Zap,
-  Image as ImageIcon
+  Barcode as BarcodeIcon
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';
@@ -38,7 +38,7 @@ import Subscription from './pages/Subscription';
 import AdminDashboard from './pages/AdminDashboard';
 import Settings from './pages/Settings';
 import Landing from './pages/Landing';
-import LogoGenerator from './pages/LogoGenerator';
+import BarcodeGenerator from './pages/BarcodeGenerator';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -201,7 +201,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           />
         </SidebarGroup>
 
-        <SidebarGroup label="Analyses" icon={BrainCircuit} active={["/ai", "/logo-generator"].includes(location.pathname)}>
+        <SidebarGroup label="Analyses" icon={BrainCircuit} active={["/ai", "/barcode-generator"].includes(location.pathname)}>
           <SidebarItem 
             to="/ai" 
             icon={BrainCircuit} 
@@ -212,10 +212,10 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
             isSubItem
           />
           <SidebarItem 
-            to="/logo-generator" 
-            icon={ImageIcon} 
-            label="Générateur de Logo" 
-            active={location.pathname === "/logo-generator"} 
+            to="/barcode-generator" 
+            icon={BarcodeIcon} 
+            label="Codes-Barres" 
+            active={location.pathname === "/barcode-generator"} 
             isSubItem
           />
         </SidebarGroup>
@@ -816,10 +816,10 @@ export default function App() {
           ) : <Navigate to="/" />
         } />
 
-        <Route path="/logo-generator" element={
+        <Route path="/barcode-generator" element={
           user ? (
             <Layout user={user} onLogout={handleLogout}>
-              <LogoGenerator />
+              <BarcodeGenerator />
             </Layout>
           ) : <Navigate to="/login" />
         } />

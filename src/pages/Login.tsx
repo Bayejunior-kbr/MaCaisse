@@ -11,12 +11,15 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
   const [verificationCode, setVerificationCode] = useState('');
   const [step, setStep] = useState(1); // 1: Credentials, 2: OTP
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
   const handleSendCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+    if (e) e.preventDefault();
+    if (step === 2) setResendLoading(true);
+    else setLoading(true);
+    
     setError('');
     setMessage('');
     try {
@@ -37,6 +40,7 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
       setError(`Erreur de connexion. (${err.message})`);
     } finally {
       setLoading(false);
+      setResendLoading(false);
     }
   };
 
@@ -189,13 +193,24 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
             </button>
 
             {step === 2 && (
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="w-full text-slate-500 text-xs font-bold hover:underline"
-              >
-                Modifier l'email
-              </button>
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  disabled={resendLoading || loading}
+                  onClick={handleSendCode}
+                  className="w-full text-emerald-600 font-bold text-sm hover:underline disabled:opacity-50"
+                >
+                  {resendLoading ? 'Envoi en cours...' : 'Renvoyer le code'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full text-slate-500 text-xs font-bold hover:underline"
+                >
+                  Modifier l'email
+                </button>
+              </div>
             )}
           </form>
 
