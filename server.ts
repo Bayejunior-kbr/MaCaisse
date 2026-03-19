@@ -105,8 +105,8 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
 const sendEmail = async (to: string, subject: string, text: string) => {
   console.log(`[Email Debug] To: ${to}, Subject: ${subject}, Body: ${text}`);
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn("[Email] No email credentials provided. Logging code to console instead.");
-    return;
+    console.error("[Email] No email credentials provided.");
+    throw new Error("La configuration email est manquante sur le serveur (EMAIL_USER/EMAIL_PASS).");
   }
   try {
     await transporter.sendMail({
