@@ -79,38 +79,29 @@ const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.pa
 
 // Email Transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: (process.env.EMAIL_PORT === "465"),
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: "kobarbayedame6@gmail.com",
+    pass: "vncb yyuw wrpt ofrm",
   },
 });
 
 // Verify SMTP connection on startup
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error("[Email] SMTP Connection Error:", error.message);
-      console.error("[Email] Please check your EMAIL_USER and EMAIL_PASS secrets.");
-    } else {
-      console.log("[Email] SMTP Server is ready to take our messages");
-    }
-  });
-} else {
-  console.warn("[Email] EMAIL_USER or EMAIL_PASS not set. Email sending will be simulated in console.");
-}
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("[Email] SMTP Connection Error:", error.message);
+  } else {
+    console.log("[Email] SMTP Server is ready to take our messages");
+  }
+});
 
 const sendEmail = async (to: string, subject: string, text: string) => {
   console.log(`[Email Debug] To: ${to}, Subject: ${subject}, Body: ${text}`);
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error("[Email] No email credentials provided.");
-    throw new Error("La configuration email est manquante sur le serveur (EMAIL_USER/EMAIL_PASS).");
-  }
   try {
     await transporter.sendMail({
-      from: `"ShopMaster" <${process.env.EMAIL_USER}>`,
+      from: `"ShopMaster" <kobarbayedame6@gmail.com>`,
       to,
       subject,
       text,
@@ -1046,7 +1037,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       res.json({ message: "Code envoyé avec succès" });
     } catch (e: any) {
       console.error("Send code error:", e);
-      res.status(500).json({ error: "Erreur lors de l'envoi du code" });
+      res.status(500).json({ error: e.message || "Erreur lors de l'envoi du code" });
     }
   });
 
