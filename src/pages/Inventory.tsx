@@ -137,6 +137,7 @@ export default function Inventory() {
         fetchData();
       } else {
         const errorData = await res.json();
+        console.error("Save product error:", errorData);
         alert(`Erreur: ${errorData.error || 'Une erreur est survenue lors de l\'enregistrement'}`);
       }
     } catch (err) {

@@ -363,10 +363,22 @@ const initDb = async () => {
         name TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        contact_name TEXT,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS products (
         id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
         shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
         category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+        supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
         name TEXT NOT NULL,
         barcode TEXT,
         image_url TEXT,
@@ -473,17 +485,6 @@ const initDb = async () => {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS suppliers (
-        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
-        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        contact_name TEXT,
-        phone TEXT,
-        email TEXT,
-        address TEXT,
-        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS broadcasts (
@@ -604,7 +605,21 @@ const initDb = async () => {
         "ALTER TABLE sale_items ADD COLUMN product_name TEXT",
       ];
       for (const sql of sqliteMigrations) {
-        try { await db.run(sql); } catch (e) {}
+        try { 
+          // For ALTER TABLE ADD COLUMN, we can check if it already exists to avoid errors
+          if (sql.includes("ADD COLUMN")) {
+            const parts = sql.split(" ");
+            const tableName = parts[2];
+            const columnName = parts[5];
+            const info = await db.all(`PRAGMA table_info(${tableName})`);
+            if (info.some((c: any) => c.name === columnName)) {
+              continue;
+            }
+          }
+          await db.run(sql); 
+        } catch (e: any) {
+          console.warn(`[DB] SQLite Migration Warning for "${sql}":`, e.message);
+        }
       }
     }
   } catch (e) {}
@@ -1574,6 +1589,23 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
+  app.get("/api/debug/db", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
+    try {
+      const tables = isPostgres 
+        ? await db.all("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        : await db.all("SELECT name FROM sqlite_master WHERE type='table'");
+      
+      const productsInfo = isPostgres
+        ? await db.all("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'products'")
+        : await db.all("PRAGMA table_info(products)");
+
+      res.json({ tables, productsInfo });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/products", authenticate, async (req: any, res) => {
     try {
       const products = await db.all(isPostgres 
@@ -1589,30 +1621,60 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   app.post("/api/products", authenticate, async (req: any, res) => {
     try {
-      const { name, barcode, category_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      console.log("[API] Creating product:", req.body);
+      const { name, barcode, category_id, supplier_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      
+      if (!name) return res.status(400).json({ error: "Le nom du produit est requis" });
+
       const result = await db.run(isPostgres 
-        ? "INSERT INTO products (shop_id, category_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES ($1::int, $2::int, $3::text, $4::text, $5::numeric, $6::numeric, $7::numeric, $8::numeric, $9::text) RETURNING id"
-        : "INSERT INTO products (shop_id, category_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        req.user.shopId, category_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url);
+        ? "INSERT INTO products (shop_id, category_id, supplier_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES ($1::int, $2::int, $3::int, $4::text, $5::text, $6::real, $7::real, $8::int, $9::int, $10::text) RETURNING id"
+        : "INSERT INTO products (shop_id, category_id, supplier_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        req.user.shopId, 
+        category_id || null, 
+        supplier_id || null, 
+        name, 
+        barcode || null, 
+        purchase_price || 0, 
+        sale_price || 0, 
+        quantity || 0, 
+        min_quantity || 0, 
+        image_url || null
+      );
+      
       const productId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
       res.json({ id: productId });
     } catch (e: any) {
       console.error("Create product error:", e);
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: "Erreur lors de la création du produit: " + e.message });
     }
   });
 
   app.put("/api/products/:id", authenticate, async (req: any, res) => {
     try {
-      const { name, barcode, category_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      console.log(`[API] Updating product ${req.params.id}:`, req.body);
+      const { name, barcode, category_id, supplier_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      
+      if (!name) return res.status(400).json({ error: "Le nom du produit est requis" });
+
       await db.run(isPostgres 
-        ? "UPDATE products SET name = $1::text, barcode = $2::text, category_id = $3::int, purchase_price = $4::numeric, sale_price = $5::numeric, quantity = $6::numeric, min_quantity = $7::numeric, image_url = $8::text WHERE id = $9::int AND shop_id = $10::int"
-        : "UPDATE products SET name = ?, barcode = ?, category_id = ?, purchase_price = ?, sale_price = ?, quantity = ?, min_quantity = ?, image_url = ? WHERE id = ? AND shop_id = ?",
-        name, barcode, category_id, purchase_price, sale_price, quantity, min_quantity, image_url, req.params.id, req.user.shopId);
+        ? "UPDATE products SET name = $1::text, barcode = $2::text, category_id = $3::int, supplier_id = $4::int, purchase_price = $5::real, sale_price = $6::real, quantity = $7::int, min_quantity = $8::int, image_url = $9::text WHERE id = $10::int AND shop_id = $11::int"
+        : "UPDATE products SET name = ?, barcode = ?, category_id = ?, supplier_id = ?, purchase_price = ?, sale_price = ?, quantity = ?, min_quantity = ?, image_url = ? WHERE id = ? AND shop_id = ?",
+        name, 
+        barcode || null, 
+        category_id || null, 
+        supplier_id || null, 
+        purchase_price || 0, 
+        sale_price || 0, 
+        quantity || 0, 
+        min_quantity || 0, 
+        image_url || null, 
+        req.params.id, 
+        req.user.shopId
+      );
       res.json({ success: true });
     } catch (e: any) {
       console.error("Update product error:", e);
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: "Erreur lors de la mise à jour du produit: " + e.message });
     }
   });
 

@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ShieldCheck,
   Zap,
-  Barcode as BarcodeIcon
+  Barcode as BarcodeIcon,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';
@@ -637,6 +638,7 @@ const AdminLayout = ({ children, user, onLogout }: { children: React.ReactNode, 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleLogin = (userData: User, token: string) => {
@@ -658,7 +660,16 @@ export default function App() {
   }, [navigate]);
 
   useEffect(() => {
-    testFirestoreConnection();
+    const checkConnection = async () => {
+      try {
+        await testFirestoreConnection();
+        setFirebaseError(null);
+      } catch (err: any) {
+        setFirebaseError(err.message);
+      }
+    };
+    
+    checkConnection();
     
     const refreshUser = async () => {
       const storedUser = localStorage.getItem('user');
@@ -727,6 +738,27 @@ export default function App() {
     <ErrorBoundary>
       <NotificationProvider user={user}>
         <OfflineStatus />
+        {firebaseError && (
+          <div className="fixed top-0 left-0 right-0 bg-red-600 text-white px-4 py-2 flex items-center justify-between shadow-lg z-[9999]">
+            <div className="flex items-center gap-3">
+              <AlertCircle size={18} />
+              <div className="text-xs font-medium">
+                <span className="font-bold">Erreur Firebase :</span> Domaine non autorisé. 
+                Ajoutez les domaines AI Studio dans votre console Firebase.
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                const domains = "ais-dev-ox2d3duaol7vt7fmn2z2on-133025908803.europe-west2.run.app\nais-pre-ox2d3duaol7vt7fmn2z2on-133025908803.europe-west2.run.app";
+                navigator.clipboard.writeText(domains);
+                alert("Domaines copiés ! Collez-les dans Authentication -> Settings -> Authorized Domains");
+              }}
+              className="bg-white text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-50 transition-colors"
+            >
+              Copier
+            </button>
+          </div>
+        )}
         <Routes>
         <Route path="/" element={
           user ? (
