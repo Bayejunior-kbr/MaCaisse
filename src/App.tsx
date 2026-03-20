@@ -273,6 +273,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
 
 const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user: User, onLogout: () => void }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
@@ -339,16 +340,28 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
   return (
     <div className="min-h-screen bg-white flex transition-colors duration-300">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-72 bg-white border-r border-slate-200 p-6 fixed h-full overflow-y-auto">
-        <div className="flex items-center gap-3 mb-10 px-2 shrink-0">
-          {user.logo_url ? (
-            <img src={user.logo_url} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
-          ) : (
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50">
-              <Store size={22} strokeWidth={2.5} />
-            </div>
-          )}
-          <h1 className="text-xl font-bold text-slate-800 tracking-tight">{user.shopName || "ShopMaster Pro"}</h1>
+      <aside className={cn(
+        "hidden lg:flex flex-col bg-white border-r border-slate-200 p-6 fixed h-full overflow-y-auto transition-all duration-300 z-40",
+        isSidebarCollapsed ? "w-0 p-0 border-none -translate-x-full" : "w-72 translate-x-0"
+      )}>
+        <div className="flex items-center justify-between mb-10 px-2 shrink-0">
+          <div className="flex items-center gap-3">
+            {user.logo_url ? (
+              <img src={user.logo_url} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
+            ) : (
+              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50">
+                <Store size={22} strokeWidth={2.5} />
+              </div>
+            )}
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">{user.shopName || "ShopMaster Pro"}</h1>
+          </div>
+          <button 
+            onClick={() => setIsSidebarCollapsed(true)}
+            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all lg:hidden xl:flex"
+            title="Masquer le menu"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <SidebarContent 
@@ -371,17 +384,33 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-72 min-h-screen flex flex-col">
+      <main className={cn(
+        "flex-1 min-h-screen flex flex-col transition-all duration-300",
+        !isSidebarCollapsed ? "lg:ml-72" : "lg:ml-0"
+      )}>
         {/* Header */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
-          <button 
-            className="lg:hidden p-2 text-slate-600"
-            onClick={() => setIsMobileMenuOpen(true)}
-          >
-            <Menu size={24} />
-          </button>
+          <div className="flex items-center gap-4">
+            <button 
+              className="lg:hidden p-2 text-slate-600"
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <Menu size={24} />
+            </button>
+            
+            <button 
+              className={cn(
+                "p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all flex items-center gap-2",
+                isSidebarCollapsed ? "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100" : ""
+              )}
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              title={isSidebarCollapsed ? "Afficher le menu" : "Masquer le menu"}
+            >
+              <Menu size={24} />
+              {isSidebarCollapsed && <span className="text-xs font-bold uppercase tracking-wider">Menu</span>}
+            </button>
 
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
             <span className="text-slate-400 text-sm hidden sm:inline">Boutique:</span>
             <span className="font-semibold text-slate-800">{user.shopName}</span>
             {user.plan === 'premium' && (
@@ -391,8 +420,9 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
               </div>
             )}
           </div>
+        </div>
 
-          <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4">
             <div className="relative">
               <button 
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}

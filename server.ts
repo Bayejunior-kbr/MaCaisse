@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import express from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
@@ -46,7 +48,22 @@ const storage = multer.diskStorage({
     cb(null, uniqueSuffix + path.extname(file.originalname));
   },
 });
-const upload = multer({ storage });
+
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|webp|gif/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error("Seuls les fichiers images (jpeg, jpg, png, webp, gif) sont autorisés."));
+  }
+});
 
 // Database Initialization
 const dbUrl = process.env.SUPABASE_URL || 
@@ -83,8 +100,8 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: "kobarbayedame6@gmail.com",
-    pass: "vncb yyuw wrpt ofrm",
+    user: process.env.EMAIL_USER || "kobarbayedame6@gmail.com",
+    pass: process.env.EMAIL_PASS || "vncb yyuw wrpt ofrm",
   },
 });
 
@@ -703,6 +720,25 @@ function formatNotificationMessage(template: string, data: { customer_name: stri
 
 const app = express();
 
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // AI Studio handles CSP
+  crossOriginEmbedderPolicy: false
+}));
+
+// Rate limiting for auth routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 requests per windowMs
+  message: { error: "Trop de tentatives. Veuillez réessayer plus tard." }
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 login attempts per windowMs
+  message: { error: "Trop de tentatives de connexion. Veuillez réessayer plus tard." }
+});
+
 // Store active WS connections by shopId
 const clients = new Map<number, Set<any>>();
 
@@ -845,6 +881,13 @@ app.get("/api/health-db", async (req, res) => {
 // Middleware and Routes
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Apply rate limiting to auth routes
+app.use("/api/auth/send-registration-code", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/send-code", authLimiter);
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/auth/verify-code", loginLimiter);
 
 // Serve static files
 app.use("/uploads", express.static(path.join(__dirname, "public", "uploads")));
@@ -1539,7 +1582,7 @@ const authenticate = async (req: any, res: any, next: any) => {
         [req.user.shopId, name, contact_name, phone, email, address]
       );
       const supplierId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
-      const newSupplier = await db.get(isPostgres ? 'SELECT * FROM suppliers WHERE id = $1::int' : 'SELECT * FROM suppliers WHERE id = ?', supplierId);
+      const newSupplier = await db.get(isPostgres ? 'SELECT * FROM suppliers WHERE id = $1::int AND shop_id = $2::int' : 'SELECT * FROM suppliers WHERE id = ? AND shop_id = ?', supplierId, req.user.shopId);
       res.status(201).json(newSupplier);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1553,7 +1596,7 @@ const authenticate = async (req: any, res: any, next: any) => {
         isPostgres ? 'UPDATE suppliers SET name = $1::text, contact_name = $2::text, phone = $3::text, email = $4::text, address = $5::text WHERE id = $6::int AND shop_id = $7::int' : 'UPDATE suppliers SET name = ?, contact_name = ?, phone = ?, email = ?, address = ? WHERE id = ? AND shop_id = ?',
         [name, contact_name, phone, email, address, req.params.id, req.user.shopId]
       );
-      const updatedSupplier = await db.get(isPostgres ? 'SELECT * FROM suppliers WHERE id = $1::int' : 'SELECT * FROM suppliers WHERE id = ?', req.params.id);
+      const updatedSupplier = await db.get(isPostgres ? 'SELECT * FROM suppliers WHERE id = $1::int AND shop_id = $2::int' : 'SELECT * FROM suppliers WHERE id = ? AND shop_id = ?', req.params.id, req.user.shopId);
       res.json(updatedSupplier);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1623,13 +1666,26 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       console.log("[API] Creating product:", req.body);
       const { name, barcode, category_id, supplier_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      const shopId = req.user.shopId;
       
       if (!name) return res.status(400).json({ error: "Le nom du produit est requis" });
+
+      // Verify category belongs to shop if provided
+      if (category_id) {
+        const category = await db.get(isPostgres ? "SELECT id FROM categories WHERE id = $1::int AND shop_id = $2::int" : "SELECT id FROM categories WHERE id = ? AND shop_id = ?", category_id, shopId);
+        if (!category) return res.status(400).json({ error: "Catégorie invalide" });
+      }
+
+      // Verify supplier belongs to shop if provided
+      if (supplier_id) {
+        const supplier = await db.get(isPostgres ? "SELECT id FROM suppliers WHERE id = $1::int AND shop_id = $2::int" : "SELECT id FROM suppliers WHERE id = ? AND shop_id = ?", supplier_id, shopId);
+        if (!supplier) return res.status(400).json({ error: "Fournisseur invalide" });
+      }
 
       const result = await db.run(isPostgres 
         ? "INSERT INTO products (shop_id, category_id, supplier_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES ($1::int, $2::int, $3::int, $4::text, $5::text, $6::real, $7::real, $8::int, $9::int, $10::text) RETURNING id"
         : "INSERT INTO products (shop_id, category_id, supplier_id, name, barcode, purchase_price, sale_price, quantity, min_quantity, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        req.user.shopId, 
+        shopId, 
         category_id || null, 
         supplier_id || null, 
         name, 
@@ -1653,8 +1709,22 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       console.log(`[API] Updating product ${req.params.id}:`, req.body);
       const { name, barcode, category_id, supplier_id, purchase_price, sale_price, quantity, min_quantity, image_url } = req.body;
+      const productId = req.params.id;
+      const shopId = req.user.shopId;
       
       if (!name) return res.status(400).json({ error: "Le nom du produit est requis" });
+
+      // Verify category belongs to shop if provided
+      if (category_id) {
+        const category = await db.get(isPostgres ? "SELECT id FROM categories WHERE id = $1::int AND shop_id = $2::int" : "SELECT id FROM categories WHERE id = ? AND shop_id = ?", category_id, shopId);
+        if (!category) return res.status(400).json({ error: "Catégorie invalide" });
+      }
+
+      // Verify supplier belongs to shop if provided
+      if (supplier_id) {
+        const supplier = await db.get(isPostgres ? "SELECT id FROM suppliers WHERE id = $1::int AND shop_id = $2::int" : "SELECT id FROM suppliers WHERE id = ? AND shop_id = ?", supplier_id, shopId);
+        if (!supplier) return res.status(400).json({ error: "Fournisseur invalide" });
+      }
 
       await db.run(isPostgres 
         ? "UPDATE products SET name = $1::text, barcode = $2::text, category_id = $3::int, supplier_id = $4::int, purchase_price = $5::real, sale_price = $6::real, quantity = $7::int, min_quantity = $8::int, image_url = $9::text WHERE id = $10::int AND shop_id = $11::int"
@@ -1668,8 +1738,8 @@ const authenticate = async (req: any, res: any, next: any) => {
         quantity || 0, 
         min_quantity || 0, 
         image_url || null, 
-        req.params.id, 
-        req.user.shopId
+        productId, 
+        shopId
       );
       res.json({ success: true });
     } catch (e: any) {
@@ -1798,6 +1868,12 @@ const authenticate = async (req: any, res: any, next: any) => {
     const userId = req.user.userId;
 
     try {
+      // Verify customer belongs to shop if provided
+      if (customer_id) {
+        const customer = await db.get(isPostgres ? "SELECT id FROM customers WHERE id = $1::int AND shop_id = $2::int" : "SELECT id FROM customers WHERE id = ? AND shop_id = ?", customer_id, shopId);
+        if (!customer) return res.status(400).json({ error: "Client invalide" });
+      }
+
       let saleId: number | null = null;
       await db.transaction(async () => {
         let totalProfit = 0;
@@ -1827,9 +1903,9 @@ const authenticate = async (req: any, res: any, next: any) => {
         if (customer_id && (payment_status === 'debt' || payment_status === 'partial')) {
           const debtAmount = total_amount - (amount_paid || 0);
           await db.run(isPostgres 
-            ? "UPDATE customers SET total_debt = total_debt + $1::numeric WHERE id = $2::int"
-            : "UPDATE customers SET total_debt = total_debt + ? WHERE id = ?",
-            debtAmount, customer_id);
+            ? "UPDATE customers SET total_debt = total_debt + $1::numeric WHERE id = $2::int AND shop_id = $3::int"
+            : "UPDATE customers SET total_debt = total_debt + ? WHERE id = ? AND shop_id = ?",
+            debtAmount, customer_id, shopId);
         }
 
         for (const item of items) {
@@ -1838,10 +1914,10 @@ const authenticate = async (req: any, res: any, next: any) => {
             ? "INSERT INTO sale_items (sale_id, product_id, product_name, quantity, unit_price, unit_profit, total_price) VALUES ($1::int, $2::int, $3::text, $4::numeric, $5::numeric, $6::numeric, $7::numeric)" 
             : "INSERT INTO sale_items (sale_id, product_id, product_name, quantity, unit_price, unit_profit, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)",
             saleId, item.product_id, item.product_name, item.quantity, item.unit_price, item.unit_profit, totalPrice);
-          await db.run(isPostgres ? "UPDATE products SET quantity = quantity - $1::numeric WHERE id = $2::int" : "UPDATE products SET quantity = quantity - ? WHERE id = ?", item.quantity, item.product_id);
+          await db.run(isPostgres ? "UPDATE products SET quantity = quantity - $1::numeric WHERE id = $2::int AND shop_id = $3::int" : "UPDATE products SET quantity = quantity - ? WHERE id = ? AND shop_id = ?", item.quantity, item.product_id, shopId);
           
           // Check for low stock after update
-          const updatedProduct = await db.get(isPostgres ? "SELECT * FROM products WHERE id = $1::int" : "SELECT * FROM products WHERE id = ?", item.product_id);
+          const updatedProduct = await db.get(isPostgres ? "SELECT * FROM products WHERE id = $1::int AND shop_id = $2::int" : "SELECT * FROM products WHERE id = ? AND shop_id = ?", item.product_id, shopId);
           if (updatedProduct.quantity <= updatedProduct.min_quantity) {
             await createNotification(
               shopId, 
@@ -1928,6 +2004,10 @@ const authenticate = async (req: any, res: any, next: any) => {
     const customerId = req.params.id;
 
     try {
+      // Verify customer belongs to shop
+      const customer = await db.get(isPostgres ? "SELECT * FROM customers WHERE id = $1::int AND shop_id = $2::int" : "SELECT * FROM customers WHERE id = ? AND shop_id = ?", customerId, shopId);
+      if (!customer) return res.status(404).json({ error: "Client non trouvé" });
+
       await db.transaction(async () => {
         await db.run(isPostgres
           ? "INSERT INTO customer_payments (shop_id, customer_id, user_id, amount, payment_method, notes) VALUES ($1::int, $2::int, $3::int, $4::numeric, $5::text, $6::text)"
@@ -1935,14 +2015,13 @@ const authenticate = async (req: any, res: any, next: any) => {
           shopId, customerId, userId, amount, payment_method || 'cash', notes || '');
 
         await db.run(isPostgres
-          ? "UPDATE customers SET total_debt = total_debt - $1::numeric WHERE id = $2::int"
-          : "UPDATE customers SET total_debt = total_debt - ? WHERE id = ?",
-          amount, customerId);
+          ? "UPDATE customers SET total_debt = total_debt - $1::numeric WHERE id = $2::int AND shop_id = $3::int"
+          : "UPDATE customers SET total_debt = total_debt - ? WHERE id = ? AND shop_id = ?",
+          amount, customerId, shopId);
       });
 
       // Send payment notification
       try {
-        const customer = await db.get(isPostgres ? "SELECT * FROM customers WHERE id = $1::int" : "SELECT * FROM customers WHERE id = ?", customerId);
         const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
         
         if (customer && customer.phone && shop) {
@@ -2176,21 +2255,27 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       const shopId = req.user.shopId;
       const products = await db.all(isPostgres ? "SELECT * FROM products WHERE shop_id = $1::int" : "SELECT * FROM products WHERE shop_id = ?", shopId);
+      const categories = await db.all(isPostgres ? "SELECT * FROM categories WHERE shop_id = $1::int" : "SELECT * FROM categories WHERE shop_id = ?", shopId);
+      const expenses = await db.all(isPostgres ? 
+        "SELECT * FROM expenses WHERE shop_id = $1::int AND created_at >= CURRENT_DATE - INTERVAL '30 days'" : 
+        "SELECT * FROM expenses WHERE shop_id = ? AND created_at >= date('now', '-30 days')", 
+        shopId
+      );
       
       const salesSql = isPostgres
-        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as "productName"
+        ? `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as "productName", p.category_id
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
            LEFT JOIN products p ON si.product_id = p.id
            WHERE s.shop_id = $1::int AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'`
-        : `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as productName
+        : `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as productName, p.category_id
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
            LEFT JOIN products p ON si.product_id = p.id
            WHERE s.shop_id = ? AND s.created_at >= date('now', '-30 days')`;
 
       const sales = await db.all(salesSql, shopId);
-      res.json({ products, sales });
+      res.json({ products, sales, categories, expenses });
     } catch (e: any) {
       console.error("AI insights data error:", e);
       res.status(500).json({ error: e.message });

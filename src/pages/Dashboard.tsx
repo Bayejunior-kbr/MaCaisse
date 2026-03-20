@@ -91,7 +91,7 @@ export default function Dashboard() {
         
         // Fetch quick AI insight if enabled
         const parsedUser = JSON.parse(storedUser || '{}');
-        if (parsedUser.plan === 'premium' && parsedUser.has_ai_features) {
+        if (parsedUser.plan === 'premium' || parsedUser.role === 'owner') {
           fetchQuickInsight(data);
         }
       } catch (err) {
@@ -104,7 +104,7 @@ export default function Dashboard() {
     fetchStats();
   }, []);
 
-  const fetchQuickInsight = async (dashboardStats: any) => {
+  const fetchQuickInsight = async (dashboardStats: DashboardStats) => {
     setAiLoading(true);
     try {
       const apiKey = getCleanApiKey();
@@ -116,10 +116,17 @@ export default function Dashboard() {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Fournis un résumé très court (max 2 phrases) et percutant des statistiques suivantes pour un tableau de bord ERP. 
-        Stats: ${JSON.stringify(dashboardStats)}`,
+        contents: `Analyse ces statistiques de vente d'aujourd'hui pour un commerçant et donne un conseil stratégique très court (max 2 phrases). 
+        Stats du jour: 
+        - Ventes: ${dashboardStats.salesToday}
+        - Bénéfice: ${dashboardStats.profitToday}
+        - Dépenses: ${dashboardStats.expensesToday}
+        - Produits en stock faible: ${dashboardStats.lowStockCount}
+        - Total produits: ${dashboardStats.totalProducts}
+        - Dettes clients: ${dashboardStats.totalDebt}
+        - Historique récent: ${JSON.stringify(dashboardStats.recentSales)}`,
         config: {
-          systemInstruction: "Tu es un expert en analyse de données commerciales. Ta réponse doit être en français, très concise et motivante."
+          systemInstruction: "Tu es un expert en gestion de commerce de détail. Ta réponse doit être en français, très concise, basée uniquement sur les chiffres fournis, et offrir une action concrète immédiate."
         }
       });
 
@@ -294,34 +301,22 @@ export default function Dashboard() {
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                 <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm mb-2">
                   <BrainCircuit size={18} />
-                  <span>Analyse Rapide</span>
+                  <span>Analyse IA en temps réel</span>
                 </div>
                 <p className="text-sm text-emerald-800 leading-relaxed">
                   {aiInsight}
                 </p>
               </div>
             ) : (
-              <>
-                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm mb-2">
-                    <BrainCircuit size={18} />
-                    <span>Analyse Rapide</span>
-                  </div>
-                  <p className="text-sm text-emerald-800 leading-relaxed">
-                    Vos ventes ont augmenté de 12% aujourd'hui. Le produit "Lait Nido" est en rupture de stock imminente.
-                  </p>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex items-center gap-2 text-slate-700 font-bold text-sm mb-2">
+                  <BrainCircuit size={18} />
+                  <span>Conseils IA</span>
                 </div>
-                
-                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                  <div className="flex items-center gap-2 text-blue-700 font-bold text-sm mb-2">
-                    <TrendingUp size={18} />
-                    <span>Opportunité</span>
-                  </div>
-                  <p className="text-sm text-blue-800 leading-relaxed">
-                    La catégorie "Boissons" performe mieux le samedi. Pensez à faire une promotion groupée.
-                  </p>
-                </div>
-              </>
+                <p className="text-sm text-slate-600 leading-relaxed italic">
+                  Activez le plan Premium pour des conseils personnalisés basés sur vos données réelles.
+                </p>
+              </div>
             )}
 
             <Link to="/ai" className="block w-full text-center py-3 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors">
