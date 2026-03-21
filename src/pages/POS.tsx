@@ -744,7 +744,7 @@ export default function POS() {
                 ref={searchInputRef}
                 type="text" 
                 placeholder={t('search')} 
-                className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm w-full sm:w-64"
+                className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm w-full sm:w-64"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
@@ -975,7 +975,7 @@ export default function POS() {
       {showSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowSuccess(false)}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center">
+          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center border border-slate-200">
             <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 size={48} />
             </div>

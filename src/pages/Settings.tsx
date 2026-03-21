@@ -18,7 +18,7 @@ import { useTranslation, Language } from '../lib/translations';
 import { User as UserType } from '../types';
 
 export default function Settings({ user, onUpdateUser }: { user: UserType, onUpdateUser: (user: UserType) => void }) {
-  const { t } = useTranslation(user.language as Language || 'fr');
+  const { t, i18n } = useTranslation(user.language as Language || 'fr');
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'shop' | 'notifications'>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -78,7 +78,17 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
         });
       }
 
-      const { name, ...shopSettings } = newSettings;
+      const { name, language: langSetting, currency: currSetting, ...shopSettings } = newSettings;
+      
+      // Handle language and currency separately as they are now free too
+      if (langSetting || currSetting) {
+        if (langSetting) {
+          localStorage.setItem('language', langSetting);
+          i18n.changeLanguage(langSetting as Language);
+        }
+        // These will be updated in the final state update below
+      }
+
       if (Object.keys(shopSettings).length > 0) {
         if (!isPremium && activeTab !== 'profile') {
           console.log("Premium required for this action");
@@ -101,6 +111,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
       if (newSettings.language) {
         localStorage.setItem('language', newSettings.language);
       }
+      
       onUpdateUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setSettings(prev => ({ ...prev, ...newSettings }));
@@ -131,7 +142,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
 
   const tabs = [
     { id: 'profile', label: t('profile'), icon: User },
-    { id: 'appearance', label: t('appearance'), icon: Palette, premium: true },
+    { id: 'appearance', label: t('appearance'), icon: Palette },
     ...(user.role === 'owner' || user.role === 'admin' ? [
       { id: 'shop', label: t('shop'), icon: ImageIcon, premium: true },
       { id: 'notifications', label: t('notifications'), icon: Bell, premium: true }
@@ -358,15 +369,21 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
           )}
 
           {activeTab === 'notifications' && (
-            <div className="p-6 md:p-8 space-y-8">
+            <div className="p-6 md:p-8 space-y-8 relative overflow-hidden">
+              {/* Under Development Overlay */}
+              <div className="absolute top-4 right-4 z-10">
+                <div className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full border border-amber-200 flex items-center gap-1 animate-pulse">
+                  <Zap size={12} />
+                  {t('under_development')}
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <Bell size={20} className="text-emerald-600" />
                   {t('notification_channels')}
                 </h3>
                 
-                {/* Twilio status check removed */}
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 bg-slate-50/30">
                     <div className="flex items-center gap-3">
@@ -375,7 +392,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                       </div>
                       <div>
                         <p className="font-bold text-slate-800 text-sm">SMS</p>
-                        <p className="text-[10px] text-slate-500">Envoyer des SMS</p>
+                        <p className="text-[10px] text-slate-500">{t('sms_desc')}</p>
                       </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -396,7 +413,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                       </div>
                       <div>
                         <p className="font-bold text-slate-800 text-sm">WhatsApp</p>
-                        <p className="text-[10px] text-slate-500">Messages WhatsApp</p>
+                        <p className="text-[10px] text-slate-500">{t('whatsapp_desc')}</p>
                       </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -415,10 +432,10 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
               <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <FileText size={20} className="text-emerald-600" />
-                  Modèle de message
+                  {t('message_template')}
                 </h3>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Modèle de notification</label>
+                  <label className="text-sm font-bold text-slate-700 ml-1">{t('notification_template_label')}</label>
                   <textarea 
                     value={settings.notification_template}
                     onChange={(e) => setSettings(prev => ({ ...prev, notification_template: e.target.value }))}
@@ -427,7 +444,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                     className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none h-32 resize-none transition-all"
                   ></textarea>
                   <p className="text-[10px] text-slate-500 px-1">
-                    Variables: <code className="bg-slate-100 px-1 rounded">{"{customer_name}"}</code>, <code className="bg-slate-100 px-1 rounded">{"{amount}"}</code>, <code className="bg-slate-100 px-1 rounded">{"{currency}"}</code>, <code className="bg-slate-100 px-1 rounded">{"{shop_name}"}</code>
+                    {t('variables_hint')} <code className="bg-slate-100 px-1 rounded">{"{customer_name}"}</code>, <code className="bg-slate-100 px-1 rounded">{"{amount}"}</code>, <code className="bg-slate-100 px-1 rounded">{"{currency}"}</code>, <code className="bg-slate-100 px-1 rounded">{"{shop_name}"}</code>
                   </p>
                 </div>
               </div>
@@ -468,7 +485,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                         alert('Erreur réseau');
                       }
                     }}
-                    className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-700 transition-all active:scale-95 shadow-lg shadow-slate-100"
+                    className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all active:scale-95 shadow-lg shadow-slate-100"
                   >
                     {t('test')}
                   </button>

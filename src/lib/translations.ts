@@ -41,6 +41,12 @@ export const translations = {
     show_tax: "Afficher les taxes sur les reçus",
     enable_ai: "Activer les fonctionnalités IA",
     notification_channels: "Canaux de notification",
+    under_development: "En cours de développement",
+    sms_desc: "Envoyer des SMS de confirmation",
+    whatsapp_desc: "Messages WhatsApp de confirmation",
+    message_template: "Modèle de message",
+    notification_template_label: "Modèle de notification",
+    variables_hint: "Variables disponibles :",
     test_config: "Tester la configuration",
     test: "Tester",
     welcome: "Bienvenue",
@@ -198,6 +204,12 @@ export const translations = {
     show_tax: "Show tax on receipts",
     enable_ai: "Enable AI features",
     notification_channels: "Notification Channels",
+    under_development: "Under development",
+    sms_desc: "Send confirmation SMS",
+    whatsapp_desc: "WhatsApp confirmation messages",
+    message_template: "Message template",
+    notification_template_label: "Notification template",
+    variables_hint: "Available variables:",
     test_config: "Test Configuration",
     test: "Test",
     welcome: "Welcome",
@@ -355,6 +367,12 @@ export const translations = {
     show_tax: "Mostrar impuestos en los recibos",
     enable_ai: "Activar funciones de IA",
     notification_channels: "Canales de notificación",
+    under_development: "En desarrollo",
+    sms_desc: "Enviar SMS de confirmación",
+    whatsapp_desc: "Mensajes de confirmación de WhatsApp",
+    message_template: "Plantilla de mensaje",
+    notification_template_label: "Plantilla de notificación",
+    variables_hint: "Variables disponibles:",
     test_config: "Probar configuración",
     test: "Probar",
     welcome: "Bienvenido",
@@ -512,6 +530,12 @@ export const translations = {
     show_tax: "إظهار الضرائب على الإيصالات",
     enable_ai: "تفعيل ميزات الذكاء الاصطناعي",
     notification_channels: "قنوات الإشعارات",
+    under_development: "قيد التطوير",
+    sms_desc: "إرسال رسائل نصية قصيرة للتأكيد",
+    whatsapp_desc: "رسائل واتساب للتأكيد",
+    message_template: "نموذج الرسالة",
+    notification_template_label: "نموذج الإشعار",
+    variables_hint: "المتغيرات المتاحة:",
     test_config: "اختبار الإعدادات",
     test: "اختبار",
     welcome: "مرحباً",
@@ -636,5 +660,12 @@ export const useTranslation = (lang: Language = 'fr') => {
   const t = (key: keyof typeof translations['fr']) => {
     return translations[lang][key] || translations['fr'][key];
   };
-  return { t };
+
+  const changeLanguage = (newLang: Language) => {
+    // This is a simple implementation, in a real app you might use a context or state
+    localStorage.setItem('language', newLang);
+    window.location.reload(); // Simplest way to apply language change globally with this custom hook
+  };
+
+  return { t, i18n: { changeLanguage } };
 };
