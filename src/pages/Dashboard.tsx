@@ -305,16 +305,7 @@ export default function Dashboard() {
                   tickFormatter={(val) => `${val/1000}k`}
                 />
                 <Tooltip 
-                  contentStyle={{
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                    backgroundColor: '#ffffff',
-                    color: '#1e293b'
-                  }}
-                  itemStyle={{
-                    color: '#1e293b'
-                  }}
+                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                   formatter={(val: number) => [formatCurrency(val, user?.currency), 'Ventes']}
                 />
                 <Area 

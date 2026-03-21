@@ -230,7 +230,7 @@ export default function Landing() {
       </section>
 
       {/* Stats Section */}
-      <section className="py-20 bg-slate-50 transition-colors">
+      <section className="py-20 bg-slate-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
@@ -314,7 +314,7 @@ export default function Landing() {
       </section>
 
       {/* How it Works Section */}
-      <section className="py-32 px-6 bg-emerald-600 text-white overflow-hidden relative transition-colors">
+      <section className="py-32 px-6 bg-emerald-600 text-white overflow-hidden relative">
         <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 blur-[100px] rounded-full"></div>
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid md:grid-cols-2 gap-20 items-center">
@@ -377,7 +377,7 @@ export default function Landing() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-32 px-6 bg-slate-50 transition-colors">
+      <section id="pricing" className="py-32 px-6 bg-slate-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-20">
             <h2 className="text-3xl md:text-5xl font-black text-slate-900 mb-6 tracking-tight">
@@ -411,7 +411,7 @@ export default function Landing() {
             </div>
 
             {/* Pro Plan */}
-            <div className="bg-emerald-600 p-10 rounded-3xl shadow-2xl shadow-emerald-200 relative overflow-hidden transition-colors">
+            <div className="bg-emerald-600 p-10 rounded-3xl shadow-2xl shadow-emerald-200 relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4">
                 <span className="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">Recommandé</span>
               </div>
@@ -445,7 +445,7 @@ export default function Landing() {
 
       {/* CTA Section */}
       <section className="py-32 px-6">
-        <div className="max-w-5xl mx-auto bg-slate-900 rounded-[40px] p-12 md:p-20 text-center relative overflow-hidden border border-slate-800">
+        <div className="max-w-5xl mx-auto bg-slate-900 rounded-[40px] p-12 md:p-20 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full bg-emerald-500/5 backdrop-blur-3xl"></div>
           <div className="relative z-10">
             <h2 className="text-3xl md:text-5xl font-black text-white mb-8 tracking-tight">

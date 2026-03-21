@@ -340,7 +340,7 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
   ];
 
   return (
-    <div className="min-h-screen bg-white flex transition-all duration-300">
+    <div className="min-h-screen bg-white flex transition-colors duration-300">
       {/* Desktop Sidebar */}
       <aside className={cn(
         "hidden lg:flex flex-col bg-white border-r border-slate-200 p-6 fixed h-full overflow-y-auto transition-all duration-300 z-40",
@@ -411,7 +411,7 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
               <Menu size={24} />
               {isSidebarCollapsed && <span className="text-xs font-bold uppercase tracking-wider">Menu</span>}
             </button>
- 
+
             <div className="flex items-center gap-2">
             <span className="text-slate-400 text-sm hidden sm:inline">Boutique:</span>
             <span className="font-semibold text-slate-800">{user.shopName}</span>
@@ -423,7 +423,7 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
             )}
           </div>
         </div>
- 
+
         <div className="flex items-center gap-4">
             <div className="relative">
               <button 
@@ -437,7 +437,7 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
                   </span>
                 )}
               </button>
- 
+
               {isNotificationsOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)}></div>
@@ -495,8 +495,8 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
             </div>
           </div>
         </header>
- 
-        <div className="p-4 sm:p-6 flex-1 bg-white">
+
+        <div className="p-4 sm:p-6 flex-1 bg-white transition-colors duration-300">
           {children}
         </div>
       </main>
@@ -551,7 +551,7 @@ const AdminLayout = ({ children, user, onLogout }: { children: React.ReactNode, 
   const location = useLocation();
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 flex transition-colors duration-300">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-72 bg-white border-r border-slate-200 p-6 fixed h-full overflow-y-auto">
         <div className="flex items-center gap-3 mb-10 px-2 shrink-0">

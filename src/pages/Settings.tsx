@@ -18,7 +18,7 @@ import { useTranslation, Language } from '../lib/translations';
 import { User as UserType } from '../types';
 
 export default function Settings({ user, onUpdateUser }: { user: UserType, onUpdateUser: (user: UserType) => void }) {
-  const { t, i18n } = useTranslation(user.language as Language || 'fr');
+  const { t } = useTranslation(user.language as Language || 'fr');
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'shop' | 'notifications'>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -78,17 +78,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
         });
       }
 
-      const { name, language: langSetting, currency: currSetting, ...shopSettings } = newSettings;
-      
-      // Handle language and currency separately as they are now free too
-      if (langSetting || currSetting) {
-        if (langSetting) {
-          localStorage.setItem('language', langSetting);
-          i18n.changeLanguage(langSetting as Language);
-        }
-        // These will be updated in the final state update below
-      }
-
+      const { name, ...shopSettings } = newSettings;
       if (Object.keys(shopSettings).length > 0) {
         if (!isPremium && activeTab !== 'profile') {
           console.log("Premium required for this action");
@@ -111,7 +101,6 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
       if (newSettings.language) {
         localStorage.setItem('language', newSettings.language);
       }
-      
       onUpdateUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setSettings(prev => ({ ...prev, ...newSettings }));
@@ -142,7 +131,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
 
   const tabs = [
     { id: 'profile', label: t('profile'), icon: User },
-    { id: 'appearance', label: t('appearance'), icon: Palette },
+    { id: 'appearance', label: t('appearance'), icon: Palette, premium: true },
     ...(user.role === 'owner' || user.role === 'admin' ? [
       { id: 'shop', label: t('shop'), icon: ImageIcon, premium: true },
       { id: 'notifications', label: t('notifications'), icon: Bell, premium: true }
@@ -485,7 +474,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                         alert('Erreur réseau');
                       }
                     }}
-                    className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all active:scale-95 shadow-lg shadow-slate-100"
+                    className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-700 transition-all active:scale-95 shadow-lg shadow-slate-100"
                   >
                     {t('test')}
                   </button>

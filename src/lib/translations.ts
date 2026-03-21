@@ -660,12 +660,5 @@ export const useTranslation = (lang: Language = 'fr') => {
   const t = (key: keyof typeof translations['fr']) => {
     return translations[lang][key] || translations['fr'][key];
   };
-
-  const changeLanguage = (newLang: Language) => {
-    // This is a simple implementation, in a real app you might use a context or state
-    localStorage.setItem('language', newLang);
-    window.location.reload(); // Simplest way to apply language change globally with this custom hook
-  };
-
-  return { t, i18n: { changeLanguage } };
+  return { t };
 };

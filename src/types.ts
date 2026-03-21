@@ -21,7 +21,6 @@ export interface User {
   plan: 'free' | 'premium';
   logo_url?: string;
   language?: string;
-  theme?: 'light';
   currency?: string;
   receipt_footer?: string;
   show_tax?: boolean;
