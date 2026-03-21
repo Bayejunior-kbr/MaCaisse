@@ -23,6 +23,8 @@ import {
   AreaChart,
   Area
 } from 'recharts';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { useTranslation, Language } from '../lib/translations';
 import { DashboardStats } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
@@ -58,6 +60,8 @@ export default function Dashboard() {
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [subscription, setSubscription] = useState<any>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const { t } = useTranslation(user?.language as Language || 'fr');
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -80,9 +84,14 @@ export default function Dashboard() {
       }
     };
 
+    fetchSubscription();
+  }, []);
+
+  useEffect(() => {
     const fetchStats = async () => {
+      setLoading(true);
       try {
-        const res = await secureFetch('/api/dashboard/stats');
+        const res = await secureFetch(`/api/dashboard/stats?date=${selectedDate}`);
         if (!res.ok) {
           throw new Error(`Erreur serveur: ${res.status}`);
         }
@@ -90,6 +99,7 @@ export default function Dashboard() {
         setStats(data);
         
         // Fetch quick AI insight if enabled
+        const storedUser = localStorage.getItem('user');
         const parsedUser = JSON.parse(storedUser || '{}');
         if (parsedUser.plan === 'premium' || parsedUser.role === 'owner') {
           fetchQuickInsight(data);
@@ -100,9 +110,8 @@ export default function Dashboard() {
         setLoading(false);
       }
     };
-    fetchSubscription();
     fetchStats();
-  }, []);
+  }, [selectedDate]);
 
   const fetchQuickInsight = async (dashboardStats: DashboardStats) => {
     setAiLoading(true);
@@ -113,6 +122,7 @@ export default function Dashboard() {
         return;
       }
       
+      const lang = localStorage.getItem('language') || 'fr';
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -126,7 +136,9 @@ export default function Dashboard() {
         - Dettes clients: ${dashboardStats.totalDebt}
         - Historique récent: ${JSON.stringify(dashboardStats.recentSales)}`,
         config: {
-          systemInstruction: "Tu es un expert en gestion de commerce de détail. Ta réponse doit être en français, très concise, basée uniquement sur les chiffres fournis, et offrir une action concrète immédiate."
+          systemInstruction: lang === 'fr' 
+            ? "Tu es un expert en gestion de commerce de détail. Ta réponse doit être en français, très concise, basée uniquement sur les chiffres fournis, et offrir une action concrète immédiate."
+            : "You are a retail management expert. Your response must be in English, very concise, based only on the provided figures, and offer an immediate concrete action."
         }
       });
 
@@ -135,11 +147,12 @@ export default function Dashboard() {
       }
     } catch (err: any) {
       console.error("Quick insight error:", err);
-      let msg = err.message || 'Impossible de générer des insights';
+      const lang = localStorage.getItem('language') || 'fr';
+      let msg = err.message || (lang === 'fr' ? 'Impossible de générer des insights' : 'Unable to generate insights');
       if (msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED")) {
-        msg = "Quota d'IA épuisé.";
+        msg = lang === 'fr' ? "Quota d'IA épuisé." : "AI Quota exhausted.";
       }
-      setAiInsight(`Erreur IA: ${msg}`);
+      setAiInsight(lang === 'fr' ? `Erreur IA: ${msg}` : `AI Error: ${msg}`);
     } finally {
       setAiLoading(false);
     }
@@ -182,36 +195,54 @@ export default function Dashboard() {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Tableau de bord</h2>
-          <p className="text-slate-500">Aperçu global de votre activité aujourd'hui</p>
+          <h2 className="text-2xl font-bold text-slate-800">{t('dashboard')}</h2>
+          <p className="text-slate-500">
+            {selectedDate === new Date().toISOString().split('T')[0] 
+              ? t('dashboard_overview_today')
+              : `${t('dashboard_overview_date')} ${new Date(selectedDate).toLocaleDateString(localStorage.getItem('language') === 'fr' ? 'fr-FR' : 'en-US')}`}
+          </p>
         </div>
-        <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 flex items-center gap-2">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-          En direct
+        <div className="flex items-center gap-3">
+          <div className="relative group">
+            <input 
+              type="date" 
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all bg-white shadow-sm hover:border-emerald-300 cursor-pointer"
+            />
+            <CalendarIcon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 group-hover:scale-110 transition-transform" />
+          </div>
+          <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 flex items-center gap-2 shadow-sm">
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              selectedDate === new Date().toISOString().split('T')[0] ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
+            )}></div>
+            {selectedDate === new Date().toISOString().split('T')[0] ? t('live') : t('history')}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title="Ventes du jour" 
+          title={selectedDate === new Date().toISOString().split('T')[0] ? t('daily_sales') : t('period_sales')} 
           value={formatCurrency(stats?.salesToday || 0, user?.currency)} 
           icon={DollarSign} 
           color="bg-emerald-600"
-          trend="up"
-          trendValue="+12%"
+          trend={selectedDate === new Date().toISOString().split('T')[0] ? "up" : undefined}
+          trendValue={selectedDate === new Date().toISOString().split('T')[0] ? "+12%" : undefined}
         />
         {(user?.role === 'owner' || user?.role === 'admin') && (
           <>
             <StatCard 
-              title="Bénéfice Net" 
+              title={selectedDate === new Date().toISOString().split('T')[0] ? t('net_profit') : t('period_profit')} 
               value={formatCurrency((stats?.profitToday || 0) - (stats?.expensesToday || 0), user?.currency)} 
               icon={TrendingUp} 
               color="bg-blue-600"
-              trend="up"
-              trendValue="+8%"
+              trend={selectedDate === new Date().toISOString().split('T')[0] ? "up" : undefined}
+              trendValue={selectedDate === new Date().toISOString().split('T')[0] ? "+8%" : undefined}
             />
             <StatCard 
-              title="Dépenses du jour" 
+              title={selectedDate === new Date().toISOString().split('T')[0] ? t('daily_expenses') : t('period_expenses')} 
               value={formatCurrency(stats?.expensesToday || 0, user?.currency)} 
               icon={Receipt} 
               color="bg-red-500"
@@ -219,18 +250,18 @@ export default function Dashboard() {
           </>
         )}
         <StatCard 
-          title="Dettes Clients" 
+          title={t('customer_debts')} 
           value={formatCurrency(stats?.totalDebt || 0, user?.currency)} 
           icon={TrendingDown} 
           color="bg-amber-500"
           trend={stats?.totalDebt && stats.totalDebt > 0 ? "up" : undefined}
-          trendValue="À recouvrer"
+          trendValue={t('to_recover')}
         />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6">
         <StatCard 
-          title="Stock faible" 
+          title={t('low_stock')} 
           value={stats?.lowStockCount || 0} 
           icon={AlertTriangle} 
           color="bg-orange-500"
@@ -238,7 +269,7 @@ export default function Dashboard() {
           trendValue="Attention"
         />
         <StatCard 
-          title="Total Produits" 
+          title={t('total_products')} 
           value={stats?.totalProducts || 0} 
           icon={Package} 
           color="bg-slate-700"
@@ -247,7 +278,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">Ventes des 7 derniers jours</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-6">{t('last_7_days_sales')}</h3>
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats?.recentSales || []}>
@@ -291,7 +322,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">Conseils IA</h3>
+          <h3 className="text-lg font-bold text-slate-800 mb-6">{t('ai_advice')}</h3>
           <div className="space-y-4">
             {aiLoading ? (
               <div className="flex items-center justify-center py-10">
@@ -301,7 +332,7 @@ export default function Dashboard() {
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                 <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm mb-2">
                   <BrainCircuit size={18} />
-                  <span>Analyse IA en temps réel</span>
+                  <span>{t('real_time_analysis')}</span>
                 </div>
                 <p className="text-sm text-emerald-800 leading-relaxed">
                   {aiInsight}
@@ -311,16 +342,16 @@ export default function Dashboard() {
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <div className="flex items-center gap-2 text-slate-700 font-bold text-sm mb-2">
                   <BrainCircuit size={18} />
-                  <span>Conseils IA</span>
+                  <span>{t('ai_advice')}</span>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed italic">
-                  Activez le plan Premium pour des conseils personnalisés basés sur vos données réelles.
+                  {t('ai_premium_only')}
                 </p>
               </div>
             )}
 
             <Link to="/ai" className="block w-full text-center py-3 text-sm font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors">
-              Voir tous les insights →
+              {t('view_all_insights')} →
             </Link>
           </div>
         </div>

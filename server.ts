@@ -2200,39 +2200,42 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/dashboard/stats", authenticate, async (req: any, res) => {
     try {
       const shopId = req.user.shopId;
+      const filterDate = req.query.date; // YYYY-MM-DD
       
       const salesTodaySql = isPostgres 
-        ? "SELECT SUM(total_amount) as total FROM sales WHERE shop_id = $1::int AND created_at::date = CURRENT_DATE"
-        : "SELECT SUM(total_amount) as total FROM sales WHERE shop_id = ? AND date(created_at) = date('now')";
+        ? `SELECT SUM(total_amount) as total FROM sales WHERE shop_id = $1::int AND created_at::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
+        : `SELECT SUM(total_amount) as total FROM sales WHERE shop_id = ? AND date(created_at) = ${filterDate ? '?' : "date('now')"}`;
       
       const profitTodaySql = isPostgres
-        ? "SELECT SUM(total_profit) as total FROM sales WHERE shop_id = $1::int AND created_at::date = CURRENT_DATE"
-        : "SELECT SUM(total_profit) as total FROM sales WHERE shop_id = ? AND date(created_at) = date('now')";
+        ? `SELECT SUM(total_profit) as total FROM sales WHERE shop_id = $1::int AND created_at::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
+        : `SELECT SUM(total_profit) as total FROM sales WHERE shop_id = ? AND date(created_at) = ${filterDate ? '?' : "date('now')"}`;
 
       const expensesTodaySql = isPostgres
-        ? "SELECT SUM(amount) as total FROM expenses WHERE shop_id = $1::int AND date::date = CURRENT_DATE"
-        : "SELECT SUM(amount) as total FROM expenses WHERE shop_id = ? AND date(date) = date('now')";
+        ? `SELECT SUM(amount) as total FROM expenses WHERE shop_id = $1::int AND date::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
+        : `SELECT SUM(amount) as total FROM expenses WHERE shop_id = ? AND date(date) = ${filterDate ? '?' : "date('now')"}`;
   
       const recentSalesSql = isPostgres
         ? `SELECT created_at::date as date, SUM(total_amount) as amount 
            FROM sales 
-           WHERE shop_id = $1::int AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+           WHERE shop_id = $1::int AND created_at >= ${filterDate ? '$2::date' : 'CURRENT_DATE'} - INTERVAL '7 days'
            GROUP BY created_at::date
            ORDER BY date`
         : `SELECT date(created_at) as date, SUM(total_amount) as amount 
            FROM sales 
-           WHERE shop_id = ? AND created_at >= date('now', '-7 days')
+           WHERE shop_id = ? AND created_at >= date(${filterDate ? '?' : "'now'"}, '-7 days')
            GROUP BY date(created_at)
            ORDER BY date`;
   
-      const salesToday = await db.get(salesTodaySql, shopId);
-      const profitToday = await db.get(profitTodaySql, shopId);
-      const expensesToday = await db.get(expensesTodaySql, shopId);
+      const params = filterDate ? [shopId, filterDate] : [shopId];
+
+      const salesToday = await db.get(salesTodaySql, ...params);
+      const profitToday = await db.get(profitTodaySql, ...params);
+      const expensesToday = await db.get(expensesTodaySql, ...params);
       const lowStock = await db.get(isPostgres ? "SELECT COUNT(*) as count FROM products WHERE shop_id = $1::int AND quantity <= min_quantity" : "SELECT COUNT(*) as count FROM products WHERE shop_id = ? AND quantity <= min_quantity", shopId);
       const totalProducts = await db.get(isPostgres ? "SELECT COUNT(*) as count FROM products WHERE shop_id = $1::int" : "SELECT COUNT(*) as count FROM products WHERE shop_id = ?", shopId);
       const totalStock = await db.get(isPostgres ? "SELECT SUM(quantity) as total FROM products WHERE shop_id = $1::int" : "SELECT SUM(quantity) as total FROM products WHERE shop_id = ?", shopId);
       const totalDebt = await db.get(isPostgres ? "SELECT SUM(total_debt) as total FROM customers WHERE shop_id = $1::int" : "SELECT SUM(total_debt) as total FROM customers WHERE shop_id = ?", shopId);
-      const recentSales = await db.all(recentSalesSql, shopId);
+      const recentSales = await db.all(recentSalesSql, ...params);
   
       res.json({
         salesToday: salesToday?.total || 0,

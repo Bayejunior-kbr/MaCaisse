@@ -24,12 +24,14 @@ import { Product, Sale, Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { secureFetch } from '../lib/api';
+import { useTranslation, Language } from '../lib/translations';
 
 interface CartItem extends Product {
   cartQuantity: number;
 }
 
 export default function POS() {
+  const { t } = useTranslation(localStorage.getItem('language') as Language || 'fr');
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -91,7 +93,7 @@ export default function POS() {
   const fetchProducts = async () => {
     try {
       const res = await secureFetch('/api/products');
-      if (!res.ok) throw new Error("Erreur produits");
+      if (!res.ok) throw new Error(t('error'));
       const data = await res.json();
       setProducts(data.filter((p: Product) => p.quantity > 0));
     } catch (err) {
@@ -267,7 +269,7 @@ export default function POS() {
         fetchProducts();
       } else {
         const data = await res.json();
-        alert(data.error || "Une erreur est survenue");
+        alert(data.error || t('error'));
       }
     } catch (err) {
       console.error(err);
@@ -523,7 +525,7 @@ export default function POS() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Reçu - ShopMaster Pro</title>
+            <title>${t('receipt')} - ShopMaster Pro</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
               @media print {
@@ -537,22 +539,22 @@ export default function POS() {
               <div class="text-center mb-4">
                 ${lastSale.logo_url ? `<img src="${lastSale.logo_url}" class="h-12 w-auto mx-auto mb-2 object-contain" />` : ''}
                 <h2 class="text-sm font-bold uppercase">${lastSale.shopName}</h2>
-                <p class="text-[8px] opacity-50">REÇU DE VENTE</p>
+                <p class="text-[8px] opacity-50">${t('receipt').toUpperCase()}</p>
               </div>
 
               <div class="border-t border-b border-dashed border-slate-300 py-2 mb-4">
-                <div class="flex justify-between"><span>Ticket:</span> <span>#${lastSale.id.toString().padStart(5, '0')}</span></div>
-                <div class="flex justify-between"><span>Date:</span> <span>${new Date(lastSale.created_at || '').toLocaleString('fr-FR')}</span></div>
-                <div class="flex justify-between"><span>Vendeur:</span> <span>${lastSale.userName}</span></div>
-                ${lastSale.customerName ? `<div class="flex justify-between"><span>Client:</span> <span>${lastSale.customerName}</span></div>` : ''}
+                <div class="flex justify-between"><span>${t('ticket')}:</span> <span>#${lastSale.id.toString().padStart(5, '0')}</span></div>
+                <div class="flex justify-between"><span>${t('date')}:</span> <span>${new Date(lastSale.created_at || '').toLocaleString(localStorage.getItem('language') === 'fr' ? 'fr-FR' : 'en-US')}</span></div>
+                <div class="flex justify-between"><span>${t('seller')}:</span> <span>${lastSale.userName}</span></div>
+                ${lastSale.customerName ? `<div class="flex justify-between"><span>${t('customer')}:</span> <span>${lastSale.customerName}</span></div>` : ''}
               </div>
 
               <table class="w-full mb-4">
                 <thead>
                   <tr class="border-b border-slate-200">
-                    <th class="text-left py-1">Item</th>
-                    <th class="text-center py-1">Qté</th>
-                    <th class="text-right py-1">Total</th>
+                    <th class="text-left py-1">${t('item')}</th>
+                    <th class="text-center py-1">${t('quantity')}</th>
+                    <th class="text-right py-1">${t('total')}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-50">
@@ -567,9 +569,9 @@ export default function POS() {
               </table>
 
               <div class="space-y-1 border-t border-slate-200 pt-2 mb-4">
-                <div class="flex justify-between"><span>Sous-total:</span> <span>${formatCurrency((lastSale.total_amount || 0) + (lastSale.discount_amount || 0) - (lastSale.tax_amount || 0), lastSale.currency)}</span></div>
-                ${lastSale.tax_amount ? `<div class="flex justify-between"><span>TVA:</span> <span>${formatCurrency(lastSale.tax_amount, lastSale.currency)}</span></div>` : ''}
-                ${lastSale.discount_amount ? `<div class="flex justify-between text-rose-500"><span>Remise:</span> <span>-${formatCurrency(lastSale.discount_amount, lastSale.currency)}</span></div>` : ''}
+                <div class="flex justify-between"><span>${t('subtotal')}:</span> <span>${formatCurrency((lastSale.total_amount || 0) + (lastSale.discount_amount || 0) - (lastSale.tax_amount || 0), lastSale.currency)}</span></div>
+                ${lastSale.tax_amount ? `<div class="flex justify-between"><span>${t('tax')}:</span> <span>${formatCurrency(lastSale.tax_amount, lastSale.currency)}</span></div>` : ''}
+                ${lastSale.discount_amount ? `<div class="flex justify-between text-rose-500"><span>${t('discount')}:</span> <span>-${formatCurrency(lastSale.discount_amount, lastSale.currency)}</span></div>` : ''}
                 <div class="flex justify-between font-bold text-sm pt-1 border-t border-slate-100">
                   <span>TOTAL:</span>
                   <span>${formatCurrency(lastSale.total_amount || 0, lastSale.currency)}</span>
@@ -577,8 +579,8 @@ export default function POS() {
               </div>
 
               <div class="text-center mt-6">
-                <p class="italic mb-1">${lastSale.receipt_footer || 'Merci de votre visite !'}</p>
-                <p class="text-[6px] opacity-30">ShopMaster Pro POS System</p>
+                <p class="italic mb-1">${lastSale.receipt_footer || t('thanks_visit')}</p>
+                <p class="text-[6px] opacity-30">${t('generated_by')}</p>
               </div>
             </div>
             <script>
@@ -688,7 +690,7 @@ export default function POS() {
       setTimeout(() => setLastScannedProduct(null), 2000);
       setShowScanner(false);
     } else {
-      alert(`Produit avec le code "${code}" non trouvé.`);
+      alert(`${t('product')} "${code}" ${t('no_product_found')}.`);
     }
   }, [products, addToCart]);
 
@@ -720,8 +722,8 @@ export default function POS() {
         <div className="p-4 border-b border-slate-100 bg-slate-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Catalogue</h2>
-              <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">Sélectionnez vos produits</p>
+              <h2 className="text-xl font-bold text-slate-900">{t('catalogue')}</h2>
+              <p className="text-slate-500 text-xs font-medium uppercase tracking-wider">{t('select_products')}</p>
             </div>
             <button 
               onClick={() => setShowMobileCart(true)}
@@ -741,7 +743,7 @@ export default function POS() {
               <input 
                 ref={searchInputRef}
                 type="text" 
-                placeholder="Rechercher..." 
+                placeholder={t('search')} 
                 className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm w-full sm:w-64"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -763,12 +765,12 @@ export default function POS() {
           {loading ? (
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
               <Loader2 className="animate-spin mb-3" size={32} />
-              <p className="text-xs font-medium uppercase tracking-widest">Chargement...</p>
+              <p className="text-xs font-medium uppercase tracking-widest">{t('loading')}</p>
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
               <Package size={48} className="mb-3 opacity-20" />
-              <p className="text-sm font-medium">Aucun produit</p>
+              <p className="text-sm font-medium">{t('no_products')}</p>
             </div>
           ) : filteredProducts.map(product => (
             <button
@@ -795,7 +797,7 @@ export default function POS() {
               </div>
               <div className="min-w-0 px-0.5">
                 <h4 className="font-bold text-slate-800 text-[10px] line-clamp-1 leading-tight mb-0.5">{product.name}</h4>
-                <p className="text-[8px] font-medium text-slate-400 uppercase tracking-tighter">Stock: {product.quantity}</p>
+                <p className="text-[8px] font-medium text-slate-400 uppercase tracking-tighter">{t('stock')}: {product.quantity}</p>
               </div>
             </button>
           ))}
@@ -819,8 +821,8 @@ export default function POS() {
               <ShoppingCart size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Panier</h3>
-              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{cart.length} articles</p>
+              <h3 className="text-sm font-bold text-slate-900">{t('cart')}</h3>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{cart.length} {t('item')}{cart.length > 1 ? 's' : ''}</p>
             </div>
           </div>
           {cart.length > 0 && (
@@ -828,7 +830,7 @@ export default function POS() {
               onClick={() => setCart([])}
               className="text-[10px] font-bold text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
             >
-              Vider
+              {t('empty_cart')}
             </button>
           )}
         </div>
@@ -837,7 +839,7 @@ export default function POS() {
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center py-10">
               <ShoppingCart size={40} className="mb-3 opacity-20" />
-              <p className="text-xs font-medium uppercase tracking-widest">Panier Vide</p>
+              <p className="text-xs font-medium uppercase tracking-widest">{t('empty_cart')} {t('cart')}</p>
             </div>
           ) : cart.map(item => (
             <div key={item.id} className="flex items-center gap-3 p-2 rounded-xl bg-slate-50/50 border border-slate-100 group">
@@ -879,7 +881,7 @@ export default function POS() {
                     setSelectedCustomer(customer || null);
                   }}
                 >
-                  <option value="">Client de passage</option>
+                  <option value="">{t('guest_customer')}</option>
                   {customers.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -889,7 +891,7 @@ export default function POS() {
                 <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input 
                   type="number" 
-                  placeholder="REMISE" 
+                  placeholder={t('discount').toUpperCase()} 
                   className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:border-emerald-500 transition-all text-slate-700 placeholder:text-slate-300"
                   value={discount || ''}
                   onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
@@ -900,18 +902,18 @@ export default function POS() {
 
           <div className="space-y-1.5 mb-4">
             <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              <span>Sous-total</span>
+              <span>{t('subtotal')}</span>
               <span className="text-slate-900">{formatCurrency(subtotal, user?.currency)}</span>
             </div>
             {taxAmount > 0 && (
               <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <span>TVA (18%)</span>
+                <span>{t('tax')} (18%)</span>
                 <span className="text-slate-900">{formatCurrency(taxAmount, user?.currency)}</span>
               </div>
             )}
             <div className="flex justify-between items-end pt-2 border-t border-slate-200">
               <div>
-                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-0.5">Total Net</p>
+                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-0.5">{t('net_total')}</p>
                 <h4 className="text-2xl font-bold text-slate-900">{formatCurrency(finalTotal, user?.currency)}</h4>
               </div>
               <div className="flex gap-1.5">
@@ -945,13 +947,13 @@ export default function POS() {
           {paymentMethod === 'debt' && (
             <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Acompte</label>
-                <span className="text-[10px] font-bold text-amber-500">Reste: {formatCurrency(finalTotal - amountPaid, user?.currency)}</span>
+                <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">{t('amount_paid')}</label>
+                <span className="text-[10px] font-bold text-amber-500">{t('debt')}: {formatCurrency(finalTotal - amountPaid, user?.currency)}</span>
               </div>
               <input 
                 type="number" 
                 className="w-full px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-bold outline-none focus:border-amber-500 text-slate-700"
-                placeholder="Montant versé"
+                placeholder={t('amount_paid')}
                 value={amountPaid || ''}
                 onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
               />
@@ -964,7 +966,7 @@ export default function POS() {
             className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl shadow-lg shadow-slate-200 transition-all disabled:opacity-20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
           >
             {isProcessing ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-            {isProcessing ? "Traitement..." : "Valider l'encaissement"}
+            {isProcessing ? t('loading') : t('checkout')}
           </button>
         </div>
       </div>
@@ -977,8 +979,8 @@ export default function POS() {
             <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 size={48} />
             </div>
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">Vente réussie !</h3>
-            <p className="text-slate-500 mb-8">La transaction a été enregistrée avec succès.</p>
+            <h3 className="text-2xl font-bold text-slate-800 mb-2">{t('sale_success')} !</h3>
+            <p className="text-slate-500 mb-8">{t('success')}</p>
             
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -987,14 +989,14 @@ export default function POS() {
                   className="flex items-center justify-center gap-2 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-xs"
                 >
                   <Printer size={16} />
-                  Ticket
+                  {t('receipt')}
                 </button>
                 <button 
                   onClick={handlePrintInvoice}
                   className="flex items-center justify-center gap-2 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-xs"
                 >
                   <FileText size={16} />
-                  Facture A4
+                  {t('invoice')} A4
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1003,21 +1005,21 @@ export default function POS() {
                   className="flex items-center justify-center gap-2 py-3 bg-emerald-50 text-emerald-700 font-bold rounded-xl hover:bg-emerald-100 transition-colors text-[10px]"
                 >
                   <Printer size={14} />
-                  Imprimer Ticket Direct
+                  {t('print_receipt')} Direct
                 </button>
                 <button 
                   onClick={handleDirectPrintInvoice}
                   className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition-colors text-[10px]"
                 >
                   <Printer size={14} />
-                  Imprimer Facture Direct
+                  {t('print_invoice')} Direct
                 </button>
               </div>
               <button 
                 onClick={() => setShowSuccess(false)}
                 className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors"
               >
-                Nouvelle vente
+                {t('new_sale')}
               </button>
             </div>
 
@@ -1032,20 +1034,20 @@ export default function POS() {
                   />
                 )}
                 <h2 className="text-xl font-bold mb-1 uppercase">{lastSale?.shopName}</h2>
-                <p className="text-xs text-slate-500 mb-4">Reçu de Vente #{lastSale?.id.toString().padStart(5, '0')}</p>
+                <p className="text-xs text-slate-500 mb-4">{t('receipt')} #{lastSale?.id.toString().padStart(5, '0')}</p>
                 
                 <div className="border-t border-b border-dashed border-slate-300 py-2 mb-4 text-left text-xs">
-                  <p>Date: {lastSale?.created_at ? new Date(lastSale.created_at).toLocaleString('fr-FR') : ''}</p>
-                  <p>Vendeur: {lastSale?.userName}</p>
-                  {lastSale?.customerName && <p>Client: {lastSale.customerName}</p>}
+                  <p>{t('date')}: {lastSale?.created_at ? new Date(lastSale.created_at).toLocaleString(localStorage.getItem('language') === 'fr' ? 'fr-FR' : 'en-US') : ''}</p>
+                  <p>{t('seller')}: {lastSale?.userName}</p>
+                  {lastSale?.customerName && <p>{t('customer')}: {lastSale.customerName}</p>}
                 </div>
 
                 <table className="w-full text-left text-xs mb-4">
                   <thead>
                     <tr className="border-b border-slate-200">
-                      <th className="py-1">Item</th>
-                      <th className="py-1 text-center">Qté</th>
-                      <th className="py-1 text-right">Total</th>
+                      <th className="py-1">{t('item')}</th>
+                      <th className="py-1 text-center">{t('quantity')}</th>
+                      <th className="py-1 text-right">{t('total')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1061,18 +1063,18 @@ export default function POS() {
 
                 <div className="border-t border-slate-200 pt-2 mb-6 space-y-1">
                   <div className="flex justify-between text-[8px]">
-                    <span>Sous-total</span>
+                    <span>{t('subtotal')}</span>
                     <span>{formatCurrency((lastSale?.total_amount || 0) + (lastSale?.discount_amount || 0) - (lastSale?.tax_amount || 0), lastSale?.currency)}</span>
                   </div>
                   {lastSale?.tax_amount ? (
                     <div className="flex justify-between text-[8px]">
-                      <span>TVA</span>
+                      <span>{t('tax')}</span>
                       <span>{formatCurrency(lastSale.tax_amount, lastSale.currency)}</span>
                     </div>
                   ) : null}
                   {lastSale?.discount_amount ? (
                     <div className="flex justify-between text-[8px]">
-                      <span>Remise</span>
+                      <span>{t('discount')}</span>
                       <span>-{formatCurrency(lastSale.discount_amount, lastSale.currency)}</span>
                     </div>
                   ) : null}
@@ -1085,7 +1087,7 @@ export default function POS() {
                 {lastSale?.receipt_footer && (
                   <p className="text-[10px] text-slate-400 italic">{lastSale.receipt_footer}</p>
                 )}
-                <p className="text-[8px] text-slate-300 mt-4">Merci de votre confiance !</p>
+                <p className="text-[8px] text-slate-300 mt-4">{t('thanks_trust')}</p>
               </div>
             </div>
           </div>

@@ -47,6 +47,7 @@ import { User } from './types';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
 import { OfflineStatus } from './components/OfflineStatus';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { useTranslation, Language } from './lib/translations';
 import { testFirestoreConnection } from './lib/firebase-utils';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
@@ -115,29 +116,30 @@ const SidebarGroup = ({ label, icon: Icon, children, active }: { label: string, 
 };
 
 const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { user: User, location: any, pendingRequestsCount: number, onLogout: () => void }) => {
+  const { t } = useTranslation(user.language as Language || 'fr');
   return (
     <>
       <nav className="flex-1 space-y-2">
         <SidebarItem 
           to="/" 
           icon={LayoutDashboard} 
-          label="Tableau de bord" 
+          label={t('dashboard')} 
           active={location.pathname === "/"} 
           userPlan={user.plan}
         />
 
-        <SidebarGroup label="Ventes" icon={ShoppingCart} active={["/pos", "/history", "/closing"].includes(location.pathname)}>
+        <SidebarGroup label={t('sales')} icon={ShoppingCart} active={["/pos", "/history", "/closing"].includes(location.pathname)}>
           <SidebarItem 
             to="/pos" 
             icon={ShoppingCart} 
-            label="Vendre" 
+            label={t('pos')} 
             active={location.pathname === "/pos"} 
             isSubItem
           />
           <SidebarItem 
             to="/history" 
             icon={History} 
-            label="Historique" 
+            label={t('history')} 
             active={location.pathname === "/history"} 
             isSubItem
           />
@@ -154,21 +156,21 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           <SidebarItem 
             to="/inventory" 
             icon={Package} 
-            label="Stock" 
+            label={t('inventory')} 
             active={location.pathname === "/inventory"} 
             isSubItem
           />
           <SidebarItem 
             to="/expenses" 
             icon={Receipt} 
-            label="Dépenses" 
+            label={t('expenses')} 
             active={location.pathname === "/expenses"} 
             isSubItem
           />
           <SidebarItem 
             to="/customers" 
             icon={Users} 
-            label="Clients" 
+            label={t('customers')} 
             active={location.pathname === "/customers"} 
             premiumOnly
             userPlan={user.plan}
@@ -177,7 +179,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           <SidebarItem 
             to="/suppliers" 
             icon={Store} 
-            label="Fournisseurs" 
+            label={t('suppliers')} 
             active={location.pathname === "/suppliers"} 
             premiumOnly
             userPlan={user.plan}
@@ -186,7 +188,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           <SidebarItem 
             to="/users" 
             icon={UserPlus} 
-            label="Utilisateurs" 
+            label={t('users')} 
             active={location.pathname === "/users"} 
             ownerOnly
             premiumOnly
@@ -200,7 +202,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           <SidebarItem 
             to="/ai" 
             icon={BrainCircuit} 
-            label="IA Insights" 
+            label={t('ai_insights')} 
             active={location.pathname === "/ai"} 
             premiumOnly
             userPlan={user.plan}
@@ -219,14 +221,14 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           <SidebarItem 
             to="/settings" 
             icon={SettingsIcon} 
-            label="Paramètres" 
+            label={t('settings')} 
             active={location.pathname === "/settings"} 
             isSubItem
           />
           <SidebarItem 
             to="/subscription" 
             icon={Zap} 
-            label="Abonnement" 
+            label={t('subscription')} 
             active={location.pathname === "/subscription"} 
             isSubItem
           />
@@ -240,8 +242,8 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
             className="mb-6 block p-4 bg-emerald-50 rounded-2xl text-emerald-900 relative overflow-hidden group border border-emerald-100"
           >
             <div className="relative z-10">
-              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Passer au Pro</p>
-              <p className="text-xs font-medium text-emerald-800/70">Débloquez l'IA et plus encore.</p>
+              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">{t('upgrade_pro')}</p>
+              <p className="text-xs font-medium text-emerald-800/70">{t('unlock_ai')}</p>
             </div>
             <Zap size={48} className="absolute -right-4 -bottom-4 text-emerald-600/10 group-hover:scale-110 transition-transform" />
           </Link>
@@ -264,7 +266,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
         >
           <LogOut size={20} />
-          <span className="font-medium">Déconnexion</span>
+          <span className="font-medium">{t('logout')}</span>
         </button>
       </div>
     </>

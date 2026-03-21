@@ -19,7 +19,11 @@ import { ConfirmModal } from '../components/ConfirmModal';
 
 import { secureFetch } from '../lib/api';
 
+import { useTranslation, Language } from '../lib/translations';
+
 export default function Inventory() {
+  const [user, setUser] = useState<any>(null);
+  const { t } = useTranslation(user?.language as Language || 'fr');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -33,7 +37,6 @@ export default function Inventory() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [user, setUser] = useState<any>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -284,8 +287,8 @@ export default function Inventory() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Gestion du Stock</h2>
-          <p className="text-slate-500">Gérez vos produits et vos alertes de stock</p>
+          <h2 className="text-2xl font-bold text-slate-800">{t('inventory_management')}</h2>
+          <p className="text-slate-500">{t('stock_alerts')}</p>
         </div>
         <div className="flex items-center gap-3">
           {(user?.role === 'owner' || user?.role === 'admin') && (
@@ -295,7 +298,7 @@ export default function Inventory() {
                 className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
               >
                 <Filter size={18} />
-                Catégories
+                {t('categories')}
               </button>
               <button 
                 onClick={() => {
@@ -306,7 +309,7 @@ export default function Inventory() {
                 className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors flex items-center gap-2"
               >
                 <Plus size={18} />
-                Ajouter un produit
+                {t('add_product')}
               </button>
             </>
           )}
@@ -319,7 +322,7 @@ export default function Inventory() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="Rechercher un produit..." 
+              placeholder={t('search_product')} 
               className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -329,7 +332,7 @@ export default function Inventory() {
             <button 
               onClick={exportToExcel}
               className="p-2 text-slate-400 hover:text-emerald-600 transition-colors"
-              title="Exporter en Excel"
+              title={t('export_excel')}
             >
               <Download size={20} />
             </button>
@@ -343,22 +346,22 @@ export default function Inventory() {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50">
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Produit</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Catégorie</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Prix Vente</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Stock</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Statut</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('product')}</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('category')}</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('sale_price')}</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('stock')}</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('status')}</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">{t('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-slate-500">Chargement...</td>
+                  <td colSpan={6} className="px-6 py-10 text-center text-slate-500">{t('loading')}</td>
                 </tr>
               ) : filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-slate-500">Aucun produit trouvé</td>
+                  <td colSpan={6} className="px-6 py-10 text-center text-slate-500">{t('no_product_found')}</td>
                 </tr>
               ) : filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-slate-50/50 transition-colors">
@@ -401,10 +404,10 @@ export default function Inventory() {
                     {product.quantity <= product.min_quantity ? (
                       <div className="flex items-center gap-1 text-red-600 text-xs font-bold">
                         <AlertCircle size={14} />
-                        Stock Faible
+                        {t('low_stock_badge')}
                       </div>
                     ) : (
-                      <div className="text-emerald-600 text-xs font-bold">En Stock</div>
+                      <div className="text-emerald-600 text-xs font-bold">{t('in_stock')}</div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -450,9 +453,9 @@ export default function Inventory() {
         {/* Mobile View */}
         <div className="md:hidden divide-y divide-slate-100">
           {loading ? (
-            <div className="p-10 text-center text-slate-500">Chargement...</div>
+            <div className="p-10 text-center text-slate-500">{t('loading')}</div>
           ) : filteredProducts.length === 0 ? (
-            <div className="p-10 text-center text-slate-500">Aucun produit trouvé</div>
+            <div className="p-10 text-center text-slate-500">{t('no_product_found')}</div>
           ) : filteredProducts.map((product) => (
             <div key={product.id} className="p-4 flex items-center gap-4">
               <div className="w-16 h-16 rounded-xl bg-slate-50 flex-shrink-0 overflow-hidden border border-slate-100">
@@ -503,13 +506,13 @@ export default function Inventory() {
                         }}
                         className="text-blue-600 text-xs font-bold flex items-center gap-1"
                       >
-                        <Edit2 size={14} /> Modifier
+                        <Edit2 size={14} /> {t('edit')}
                       </button>
                       <button 
                         onClick={() => setConfirmDelete({ type: 'product', id: product.id })}
                         className="text-red-600 text-xs font-bold flex items-center gap-1"
                       >
-                        <Trash2 size={14} /> Supprimer
+                        <Trash2 size={14} /> {t('delete')}
                       </button>
                     </>
                   )}
@@ -527,7 +530,7 @@ export default function Inventory() {
           <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <h3 className="text-xl font-bold text-slate-800">
-                {editingProduct ? 'Modifier le produit' : 'Ajouter un produit'}
+                {editingProduct ? t('edit_product') : t('add_product')}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600">
                 <X size={24} />
@@ -538,7 +541,7 @@ export default function Inventory() {
               <form onSubmit={handleSaveProduct} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Nom du produit</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t('product_name')}</label>
                   <input 
                     type="text" 
                     required
@@ -548,7 +551,7 @@ export default function Inventory() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Code-barres</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t('barcode')}</label>
                   <div className="flex gap-2">
                     <input 
                       type="text" 
@@ -562,14 +565,14 @@ export default function Inventory() {
                       onClick={() => setFormData({...formData, barcode: Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0')})}
                       className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors text-xs font-bold whitespace-nowrap"
                     >
-                      Générer
+                      {t('generate')}
                     </button>
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Image du produit</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">{t('product_image')}</label>
                 <div className="flex items-center gap-3 p-3 border border-dashed border-slate-200 rounded-xl bg-slate-50">
                   {(selectedFile || formData.image_url) ? (
                     <img 
@@ -603,26 +606,26 @@ export default function Inventory() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Catégorie</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t('category')}</label>
                   <select 
                     className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
                     value={formData.category_id}
                     onChange={(e) => setFormData({...formData, category_id: e.target.value})}
                   >
-                    <option value="">Sélectionner</option>
+                    <option value="">{t('select_category')}</option>
                     {categories.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Fournisseur</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t('supplier')}</label>
                   <select 
                     className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
                     value={formData.supplier_id}
                     onChange={(e) => setFormData({...formData, supplier_id: e.target.value})}
                   >
-                    <option value="">Sélectionner</option>
+                    <option value="">{t('select_supplier')}</option>
                     {suppliers.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -631,7 +634,7 @@ export default function Inventory() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Quantité Initiale</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">{t('initial_quantity')}</label>
                 <input 
                   type="number" 
                   min="0"
@@ -644,7 +647,7 @@ export default function Inventory() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Prix d'Achat (CFA)</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t('purchase_price')} ({user?.currency})</label>
                   <input 
                     type="number" 
                     min="0"
@@ -655,7 +658,7 @@ export default function Inventory() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Prix de Vente (CFA)</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t('sale_price')} ({user?.currency})</label>
                   <input 
                     type="number" 
                     min="0"
@@ -669,7 +672,7 @@ export default function Inventory() {
 
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-semibold text-emerald-800">Bénéfice par produit</span>
+                  <span className="text-sm font-semibold text-emerald-800">{t('profit_per_product')}</span>
                   <span className="text-lg font-bold text-emerald-600">
                     {formatCurrency((parseFloat(formData.sale_price) || 0) - (parseFloat(formData.purchase_price) || 0), user?.currency)}
                   </span>
@@ -677,7 +680,7 @@ export default function Inventory() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Alerte Stock Faible (Quantité)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">{t('min_stock_alert')}</label>
                 <input 
                   type="number" 
                   required
@@ -693,7 +696,7 @@ export default function Inventory() {
                 className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all mt-4 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {uploading && <Loader2 className="animate-spin" size={20} />}
-                {editingProduct ? 'Mettre à jour' : 'Enregistrer le produit'}
+                {editingProduct ? t('update_product') : t('save_product')}
               </button>
             </form>
           </div>
@@ -707,7 +710,7 @@ export default function Inventory() {
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsCategoryModalOpen(false)}></div>
           <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl p-8">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-slate-800">Gérer les catégories</h3>
+              <h3 className="text-xl font-bold text-slate-800">{t('manage_categories')}</h3>
               <button onClick={() => setIsCategoryModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600">
                 <X size={24} />
               </button>
@@ -717,7 +720,7 @@ export default function Inventory() {
               <input 
                 type="text" 
                 required
-                placeholder="Nouvelle catégorie..."
+                placeholder={t('new_category')}
                 className="flex-1 px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
@@ -752,10 +755,10 @@ export default function Inventory() {
           else if (confirmDelete?.type === 'category') handleDeleteCategory(confirmDelete.id);
         }}
         loading={isDeleting}
-        title={confirmDelete?.type === 'product' ? "Supprimer le produit" : "Supprimer la catégorie"}
+        title={confirmDelete?.type === 'product' ? t('confirm_delete_product') : t('confirm_delete_category')}
         message={confirmDelete?.type === 'product' 
-          ? "Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible." 
-          : "Êtes-vous sûr de vouloir supprimer cette catégorie ? Tous les produits associés seront sans catégorie."}
+          ? t('delete_product_warning') 
+          : t('delete_category_warning')}
       />
     </div>
   );

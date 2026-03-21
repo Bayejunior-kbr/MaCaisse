@@ -14,9 +14,11 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useTranslation, Language } from '../lib/translations';
 import { User as UserType } from '../types';
 
 export default function Settings({ user, onUpdateUser }: { user: UserType, onUpdateUser: (user: UserType) => void }) {
+  const { t } = useTranslation(user.language as Language || 'fr');
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'shop' | 'notifications'>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -96,6 +98,9 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
       }
 
       const updatedUser = { ...user, ...newSettings };
+      if (newSettings.language) {
+        localStorage.setItem('language', newSettings.language);
+      }
       onUpdateUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setSettings(prev => ({ ...prev, ...newSettings }));
@@ -125,18 +130,18 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
   };
 
   const tabs = [
-    { id: 'profile', label: 'Profil', icon: User },
-    { id: 'appearance', label: 'Apparence', icon: Palette, premium: true },
+    { id: 'profile', label: t('profile'), icon: User },
+    { id: 'appearance', label: t('appearance'), icon: Palette, premium: true },
     ...(user.role === 'owner' || user.role === 'admin' ? [
-      { id: 'shop', label: 'Boutique', icon: ImageIcon, premium: true },
-      { id: 'notifications', label: 'Notifications', icon: Bell, premium: true }
+      { id: 'shop', label: t('shop'), icon: ImageIcon, premium: true },
+      { id: 'notifications', label: t('notifications'), icon: Bell, premium: true }
     ] : []),
   ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-800">Paramètres</h2>
+        <h2 className="text-2xl font-bold text-slate-800">{t('settings')}</h2>
         <p className="text-slate-500">Gérez votre compte et personnalisez votre expérience</p>
       </div>
 
@@ -181,7 +186,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Nom complet</label>
+                  <label className="text-sm font-bold text-slate-700 ml-1">{t('name')}</label>
                   <input 
                     type="text" 
                     value={settings.name}
@@ -190,7 +195,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 ml-1">Email</label>
+                  <label className="text-sm font-bold text-slate-700 ml-1">{t('email')}</label>
                   <input 
                     type="email" 
                     value={user.email}
@@ -206,7 +211,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                   disabled={isSaving}
                   className="w-full sm:w-auto px-8 py-3 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 active:scale-95 disabled:opacity-50"
                 >
-                  {isSaving ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                  {isSaving ? t('saving') : t('save_changes')}
                 </button>
               </div>
             </div>
@@ -217,7 +222,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
               <div className="space-y-4">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
                     <Globe size={20} className="text-emerald-600" />
-                    Langue de l'interface
+                    {t('language')}
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
@@ -246,7 +251,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                 <div className="space-y-4">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
                     <Globe size={20} className="text-emerald-600" />
-                    Devise
+                    {t('currency')}
                   </h3>
                   <div className="grid grid-cols-3 gap-3">
                     {['FCFA', 'EUR', 'USD'].map((curr) => (
@@ -273,7 +278,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
               <div className="space-y-4">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
                     <ImageIcon size={20} className="text-emerald-600" />
-                    Logo de la boutique
+                    {t('shop_logo')}
                   </h3>
                   <div className="flex flex-col sm:flex-row items-center gap-6">
                     <div 
@@ -315,7 +320,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                   </h3>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-700 ml-1">Pied de page des reçus</label>
+                      <label className="text-sm font-bold text-slate-700 ml-1">{t('receipt_footer')}</label>
                       <textarea 
                         value={settings.receipt_footer}
                         onChange={(e) => setSettings(prev => ({ ...prev, receipt_footer: e.target.value }))}
@@ -332,7 +337,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                         onChange={(e) => handleSave({ show_tax: e.target.checked })}
                         className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 bg-white" 
                       />
-                      <label htmlFor="show-tax" className="text-sm font-bold text-slate-700">Afficher les taxes sur les reçus</label>
+                      <label htmlFor="show-tax" className="text-sm font-bold text-slate-700">{t('show_tax')}</label>
                     </div>
                     <div className="flex items-center gap-3 p-4 bg-amber-50/50 rounded-2xl border border-amber-100">
                       <input 
@@ -344,7 +349,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                       />
                       <label htmlFor="has-ai-features" className="text-sm font-bold text-slate-800 flex items-center gap-2">
                         <Zap size={14} className="text-amber-500 fill-amber-500" />
-                        Activer les fonctionnalités IA
+                        {t('enable_ai')}
                       </label>
                     </div>
                   </div>
@@ -357,7 +362,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
               <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <Bell size={20} className="text-emerald-600" />
-                  Canaux de notification
+                  {t('notification_channels')}
                 </h3>
                 
                 {/* Twilio status check removed */}
@@ -430,7 +435,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
               <div className="pt-6 border-t border-slate-100">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
                   <Zap size={20} className="text-amber-500" />
-                  Tester la configuration
+                  {t('test_config')}
                 </h3>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <input 
@@ -465,7 +470,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                     }}
                     className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-700 transition-all active:scale-95 shadow-lg shadow-slate-100"
                   >
-                    Tester
+                    {t('test')}
                   </button>
                 </div>
               </div>
