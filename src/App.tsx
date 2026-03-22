@@ -43,6 +43,7 @@ import BarcodeGenerator from './pages/BarcodeGenerator';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import { User } from './types';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
 import { OfflineStatus } from './components/OfflineStatus';
@@ -768,6 +769,7 @@ export default function App() {
         <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />} />
         <Route path="/register" element={user ? <Navigate to="/" /> : <Register onLogin={handleLogin} />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/" /> : <ForgotPassword />} />
+        <Route path="/reset-password" element={user ? <Navigate to="/" /> : <ResetPassword />} />
 
         <Route path="/inventory" element={
           user ? (

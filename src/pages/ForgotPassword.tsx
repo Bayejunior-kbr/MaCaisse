@@ -17,17 +17,21 @@ export default function ForgotPassword() {
     setSuccess(false);
     
     try {
-      await sendPasswordResetEmail(auth, email);
-      setSuccess(true);
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      if (response.ok) {
+        setSuccess(true);
+      } else {
+        const errData = await response.json();
+        setError(errData.error || 'Une erreur est survenue. Veuillez réessayer plus tard.');
+      }
     } catch (err: any) {
       console.error("Password reset error:", err);
-      if (err.code === 'auth/user-not-found') {
-        setError('Aucun compte n\'est associé à cet email.');
-      } else if (err.code === 'auth/invalid-email') {
-        setError('L\'adresse email n\'est pas valide.');
-      } else {
-        setError('Une erreur est survenue. Veuillez réessayer plus tard.');
-      }
+      setError('Une erreur est survenue. Veuillez réessayer plus tard.');
     } finally {
       setLoading(false);
     }

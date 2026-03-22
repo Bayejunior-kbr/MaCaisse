@@ -12,6 +12,7 @@ import multer from "multer";
 import fs from "fs";
 import http from "http";
 import pg from "pg";
+import crypto from "crypto";
 import { AsyncLocalStorage } from 'async_hooks';
 
 import nodemailer from "nodemailer";
@@ -569,6 +570,8 @@ const initDb = async () => {
         { table: "subscription_requests", column: "phone_number", type: "TEXT" },
         { table: "subscription_requests", column: "transaction_ref", type: "TEXT" },
         { table: "sale_items", column: "product_name", type: "TEXT" },
+        { table: "users", column: "reset_token", type: "TEXT" },
+        { table: "users", column: "reset_token_expires", type: isPostgres ? "TIMESTAMP" : "DATETIME" },
       ];
 
       // Get all existing columns in one query
@@ -626,6 +629,8 @@ const initDb = async () => {
         "ALTER TABLE subscription_requests ADD COLUMN phone_number TEXT",
         "ALTER TABLE subscription_requests ADD COLUMN transaction_ref TEXT",
         "ALTER TABLE sale_items ADD COLUMN product_name TEXT",
+        "ALTER TABLE users ADD COLUMN reset_token TEXT",
+        "ALTER TABLE users ADD COLUMN reset_token_expires DATETIME",
       ];
       for (const sql of sqliteMigrations) {
         try { 
@@ -1194,6 +1199,69 @@ const authenticate = async (req: any, res: any, next: any) => {
     } catch (e: any) {
       console.error("Verify code error:", e);
       res.status(500).json({ error: "Une erreur est survenue lors de la vérification." });
+    }
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "Email requis" });
+
+      const user = await db.get(isPostgres ? "SELECT id, name FROM users WHERE email = $1::text" : "SELECT id, name FROM users WHERE email = ?", email);
+      
+      if (!user) {
+        // We return success even if user not found for security reasons (don't leak emails)
+        // but we don't send anything.
+        return res.json({ success: true, message: "Si un compte existe, un lien a été envoyé." });
+      }
+
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 3600000); // 1 hour
+
+      await db.run(isPostgres 
+        ? "UPDATE users SET reset_token = $1::text, reset_token_expires = $2::timestamp WHERE id = $3::int" 
+        : "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?", 
+        resetToken, expires.toISOString(), user.id);
+
+      const resetLink = `${process.env.APP_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+
+      await sendEmail(
+        email,
+        "Réinitialisation de votre mot de passe - ShopMaster",
+        `Bonjour ${user.name},\n\nVous avez demandé la réinitialisation de votre mot de passe.\n\nCliquez sur le lien suivant pour choisir un nouveau mot de passe :\n${resetLink}\n\nCe lien est valable pendant 1 heure.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet email.`
+      );
+
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Forgot password error:", e);
+      res.status(500).json({ error: "Erreur lors de l'envoi de l'email." });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { email, token, password } = req.body;
+      if (!email || !token || !password) return res.status(400).json({ error: "Données manquantes" });
+
+      const user = await db.get(isPostgres 
+        ? "SELECT id FROM users WHERE email = $1::text AND reset_token = $2::text AND reset_token_expires > CURRENT_TIMESTAMP" 
+        : "SELECT id FROM users WHERE email = ? AND reset_token = ? AND reset_token_expires > datetime('now')", 
+        email, token);
+
+      if (!user) {
+        return res.status(400).json({ error: "Lien invalide ou expiré." });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      await db.run(isPostgres 
+        ? "UPDATE users SET password_hash = $1::text, reset_token = NULL, reset_token_expires = NULL WHERE id = $2::int" 
+        : "UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?", 
+        passwordHash, user.id);
+
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Reset password error:", e);
+      res.status(500).json({ error: "Erreur lors de la réinitialisation." });
     }
   });
 
