@@ -52,7 +52,14 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['shop_id', 'name', 'email', 'role', 'created_at']) &&
+      let allowedFields = [
+        'id', 'shop_id', 'name', 'email', 'role', 'shopName', 'shopAddress', 
+        'shopPhone', 'plan', 'logo_url', 'language', 'theme', 'currency', 
+        'receipt_footer', 'show_tax', 'sms_enabled', 'whatsapp_enabled', 
+        'notification_template', 'has_ai_features', 'subscription_expires_at', 
+        'status', 'created_at'
+      ];
+      return hasOnlyAllowedFields(allowedFields) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              isValidEmail(data.email) &&
              data.role in ['owner', 'employee', 'admin'];

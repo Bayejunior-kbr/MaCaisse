@@ -60,22 +60,16 @@ export async function testFirestoreConnection() {
   } catch (error) {
     const currentDomain = typeof window !== 'undefined' ? window.location.hostname : 'unknown';
     if (error instanceof Error) {
-      if (error.message.includes('the client is offline')) {
+      if (error.message.includes('the client is offline') || error.message.includes('permission-denied')) {
         console.error("❌ ERREUR DE CONFIGURATION FIREBASE ❌");
-        console.error(`Le domaine actuel (${currentDomain}) n'est pas autorisé.`);
-        console.error("\n--- DOMAINES À AJOUTER DANS LA CONSOLE FIREBASE ---");
-        console.error("1. ais-dev-ox2d3duaol7vt7fmn2z2on-133025908803.europe-west2.run.app");
-        console.error("2. ais-pre-ox2d3duaol7vt7fmn2z2on-133025908803.europe-west2.run.app");
-        console.error("--------------------------------------------------\n");
-        console.error("Allez dans : Authentication -> Settings -> Authorized Domains");
-        console.error("\nAUTRES CAUSES POSSIBLES :");
-        console.error("- L'API Firestore n'est pas activée dans Google Cloud Console.");
-        console.error("- Votre clé API a des restrictions HTTP (Referrer) qui bloquent ce domaine.");
-        console.error("- Un bloqueur de publicité bloque 'firestore.googleapis.com'.");
+        const msg = "Domaine non autorisé ou erreur de permission Firestore.";
+        console.error(msg);
+        throw new Error(msg);
       } else {
         console.error(`Firestore connection error on ${currentDomain}:`, error.message);
       }
-    } else {
+    }
+ else {
       console.error(`Unknown Firestore connection error on ${currentDomain}:`, error);
     }
     // Other errors are ignored as this is just a test

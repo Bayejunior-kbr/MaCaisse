@@ -10,6 +10,7 @@ import {
 } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../lib/firebase-utils';
 
 export default function Register({ onLogin }: { onLogin: (user: User, token: string) => void }) {
   const [step, setStep] = useState(1); // 1: Details, 2: Verification
@@ -75,54 +76,36 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
       return;
     }
 
-    if (step === 2) setResendLoading(true);
-    else setLoading(true);
-    
-    setError('');
-    try {
-      // In a real app, send OTP here
-      setTimeout(() => {
-        setStep(2);
-        setSuccess('Un code de vérification a été envoyé à votre adresse email.');
-        setLoading(false);
-        setResendLoading(false);
-      }, 1500);
-    } catch (err: any) {
-      setError('Erreur lors de l\'envoi du code.');
-      setLoading(false);
-      setResendLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
     setLoading(true);
     setError('');
     
     try {
-      // Create user in Firebase Auth
+      // Create user in Firebase Auth directly (removing OTP step for now to simplify)
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       const user = userCredential.user;
 
       // Update profile name
       await updateProfile(user, { displayName: formData.name });
 
-      const newUser: User = {
-        id: Math.floor(Math.random() * 1000000),
-        shop_id: Math.floor(Math.random() * 1000000),
-        email: formData.email,
-        name: formData.name,
-        shopName: formData.shopName,
-        role: 'owner',
-        plan: 'free',
-        created_at: new Date().toISOString(),
-        status: 'active'
-      };
+      const idToken = await user.getIdToken();
       
-      // Save to Firestore
-      await setDoc(doc(db, 'users', user.uid), newUser);
-      
-      onLogin(newUser, await user.getIdToken());
+      // Call server to create user and shop
+      const response = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          idToken,
+          shopName: formData.shopName
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erreur serveur lors de la création du compte");
+      }
+
+      const { token, user: userData } = await response.json();
+      onLogin(userData, token);
       navigate('/');
     } catch (err: any) {
       console.error("Registration error:", err);
@@ -130,12 +113,21 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
         setError('Cet email est déjà utilisé.');
       } else if (err.code === 'auth/weak-password') {
         setError('Le mot de passe est trop faible.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError("L'inscription par e-mail n'est pas activée dans votre console Firebase.");
+      } else if (err.message && err.message.includes('permission-denied')) {
+        setError('Accès refusé par la base de données. Vérifiez vos droits.');
       } else {
-        setError("Erreur lors de l'inscription. Veuillez réessayer.");
+        setError("Erreur lors de l'inscription : " + (err.message || "Veuillez réessayer."));
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // This is now handled by handleSendCode (renamed or merged)
   };
 
   const handleGoogleRegister = async () => {
@@ -145,26 +137,46 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
+      const idToken = await user.getIdToken();
       
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        onLogin(userData, await user.getIdToken());
-        navigate('/');
-      } else {
-        // If user doesn't exist, we need shop name
-        setFormData({
-          ...formData,
-          email: user.email || '',
-          name: user.displayName || '',
-        });
-        setStep(1);
-        setError('Veuillez compléter les informations de votre boutique.');
+      // Call server to check if user exists or create them
+      const response = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          idToken,
+          shopName: formData.shopName || `${user.displayName || 'Ma'}'s Shop`
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        // If shop name is required but not provided
+        if (response.status === 400 && errData.error && errData.error.includes("nom de boutique")) {
+          setFormData({
+            ...formData,
+            email: user.email || '',
+            name: user.displayName || '',
+          });
+          setStep(1);
+          setError('Veuillez fournir un nom pour votre boutique.');
+          return;
+        }
+        throw new Error(errData.error || "Erreur serveur lors de l'inscription Google");
       }
+
+      const { token, user: userData } = await response.json();
+      onLogin(userData, token);
+      navigate('/');
     } catch (err: any) {
       console.error("Google register error:", err);
-      setError("Erreur lors de l'inscription avec Google.");
+      if (err.code === 'auth/unauthorized-domain') {
+        setError("Ce domaine n'est pas autorisé dans Firebase. Veuillez l'ajouter dans la console Firebase.");
+      } else if (err.code === 'auth/popup-blocked') {
+        setError("Le popup a été bloqué par votre navigateur. Veuillez autoriser les popups.");
+      } else {
+        setError("Erreur lors de l'inscription avec Google : " + (err.message || "Inconnue"));
+      }
     } finally {
       setLoading(false);
     }

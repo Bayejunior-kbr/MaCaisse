@@ -1245,7 +1245,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   app.post("/api/auth/google", async (req, res) => {
     try {
-      const { idToken } = req.body;
+      const { idToken, shopName: providedShopName, shopAddress, shopPhone } = req.body;
       if (!idToken) return res.status(400).json({ error: "Token manquant" });
 
       // Verify Firebase ID Token
@@ -1279,12 +1279,14 @@ const authenticate = async (req: any, res: any, next: any) => {
         // Create new shop and user if not exists
         // If admin email, they don't get a shop by default
         let shopId = null;
-        let shopName = null;
+        let shopName = providedShopName || `Boutique de ${name || email.split('@')[0]}`;
         let role = isAdminEmail ? "admin" : "owner";
 
         if (!isAdminEmail) {
-          shopName = `Boutique de ${name || email.split('@')[0]}`;
-          const shopResult = await db.run(isPostgres ? "INSERT INTO shops (name) VALUES ($1::text) RETURNING id" : "INSERT INTO shops (name) VALUES (?)", shopName);
+          const shopResult = await db.run(isPostgres 
+            ? "INSERT INTO shops (name, address, phone) VALUES ($1::text, $2::text, $3::text) RETURNING id" 
+            : "INSERT INTO shops (name, address, phone) VALUES (?, ?, ?)", 
+            shopName, shopAddress || null, shopPhone || null);
           shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
         }
         
@@ -1296,23 +1298,12 @@ const authenticate = async (req: any, res: any, next: any) => {
         
         const userId = isPostgres ? userResult.rows[0].id : userResult.lastInsertRowid;
         
-        user = {
-          id: userId,
-          shop_id: shopId,
-          name: name || email.split('@')[0],
-          email,
-          role: role,
-          shopName,
-          plan: 'free',
-          theme: 'light',
-          language: 'fr',
-          currency: 'FCFA',
-          show_tax: 0,
-          sms_enabled: 0,
-          whatsapp_enabled: 0,
-          notification_template: ''
-        };
-      } else if (isAdminEmail && user.role !== 'admin') {
+        user = await db.get(isPostgres 
+          ? "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.id = $1::int" 
+          : "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.id = ?", userId);
+      }
+      
+      if (isAdminEmail && user.role !== 'admin') {
         // Promote existing user to admin if they are using the admin email
         await db.run(isPostgres ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE id = $1::int" : "UPDATE users SET role = ? WHERE id = ?", "admin", user.id);
         user.role = 'admin';

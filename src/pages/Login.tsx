@@ -5,6 +5,7 @@ import { LogIn, Mail, Lock, Loader2, Store, CheckCircle2, Eye, EyeOff } from 'lu
 import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../lib/firebase-utils';
 
 export default function Login({ onLogin }: { onLogin: (user: User, token: string) => void }) {
   const [email, setEmail] = useState('');
@@ -18,32 +19,54 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
   const navigate = navigateHook();
 
   const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError('');
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
+      const idToken = await user.getIdToken();
       
-      // Check if user exists in our database
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        onLogin(userData, await user.getIdToken());
-        navigate('/');
-      } else {
-        // If user doesn't exist, redirect to register with their info
-        navigate('/register', { 
-          state: { 
-            email: user.email,
-            name: user.displayName,
-            uid: user.uid,
-            photoURL: user.photoURL
-          } 
-        });
+      // Call server to get server JWT and user data
+      const response = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        // If user doesn't exist on server, redirect to register
+        if (response.status === 404 || (errData.error && errData.error.includes("non trouvé"))) {
+          navigate('/register', { 
+            state: { 
+              email: user.email,
+              name: user.displayName,
+              uid: user.uid,
+              photoURL: user.photoURL
+            } 
+          });
+          return;
+        }
+        throw new Error(errData.error || "Erreur serveur lors de la connexion Google");
       }
+
+      const { token, user: userData } = await response.json();
+      onLogin(userData, token);
+      navigate('/');
     } catch (error: any) {
       console.error("Google login error:", error);
-      setError("Erreur lors de la connexion avec Google.");
+      if (error.code === 'auth/unauthorized-domain') {
+        setError("Ce domaine n'est pas autorisé dans Firebase. Veuillez l'ajouter dans la console Firebase.");
+      } else if (error.code === 'auth/operation-not-allowed') {
+        setError("La connexion Google n'est pas activée dans votre console Firebase (Authentication -> Sign-in method).");
+      } else if (error.code === 'auth/popup-blocked') {
+        setError("Le popup a été bloqué par votre navigateur. Veuillez autoriser les popups.");
+      } else {
+        setError("Erreur lors de la connexion avec Google : " + (error.message || "Inconnue"));
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,21 +78,33 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      const idToken = await user.getIdToken();
       
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        throw new Error("Utilisateur non trouvé dans la base de données.");
+      // Call server to get server JWT and user data
+      const response = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erreur serveur lors de la connexion");
       }
 
-      const userData = userDoc.data() as User;
-      onLogin(userData, await user.getIdToken());
+      const { token, user: userData } = await response.json();
+      onLogin(userData, token);
       navigate('/');
     } catch (err: any) {
       console.error("Login error:", err);
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('Email ou mot de passe incorrect.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError("La connexion par e-mail/mot de passe n'est pas activée dans votre console Firebase.");
+      } else if (err.message && err.message.includes('permission-denied')) {
+        setError('Accès refusé par la base de données. Vérifiez vos droits.');
       } else {
-        setError('Une erreur est survenue. Veuillez réessayer.');
+        setError('Une erreur est survenue : ' + (err.message || 'Veuillez réessayer.'));
       }
     } finally {
       setLoading(false);
