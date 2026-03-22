@@ -59,7 +59,7 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
       if (error.code === 'auth/unauthorized-domain') {
         setError("Ce domaine n'est pas autorisé dans Firebase. Veuillez l'ajouter dans la console Firebase.");
       } else if (error.code === 'auth/operation-not-allowed') {
-        setError("La connexion Google n'est pas activée dans votre console Firebase (Authentication -> Sign-in method).");
+        setError("La connexion Google n'est pas encore activée pour cette boutique.");
       } else if (error.code === 'auth/popup-blocked') {
         setError("Le popup a été bloqué par votre navigateur. Veuillez autoriser les popups.");
       } else {
@@ -100,7 +100,7 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('Email ou mot de passe incorrect.');
       } else if (err.code === 'auth/operation-not-allowed') {
-        setError("La connexion par e-mail/mot de passe n'est pas activée dans votre console Firebase.");
+        setError("La connexion par e-mail n'est pas encore activée pour cette boutique.");
       } else if (err.message && err.message.includes('permission-denied')) {
         setError('Accès refusé par la base de données. Vérifiez vos droits.');
       } else {

@@ -114,7 +114,7 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
       } else if (err.code === 'auth/weak-password') {
         setError('Le mot de passe est trop faible.');
       } else if (err.code === 'auth/operation-not-allowed') {
-        setError("L'inscription par e-mail n'est pas activée dans votre console Firebase.");
+        setError("L'inscription par e-mail n'est pas encore activée pour cette boutique.");
       } else if (err.message && err.message.includes('permission-denied')) {
         setError('Accès refusé par la base de données. Vérifiez vos droits.');
       } else {
