@@ -1223,7 +1223,9 @@ const authenticate = async (req: any, res: any, next: any) => {
         : "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?", 
         resetToken, expires.toISOString(), user.id);
 
-      const resetLink = `${process.env.APP_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+      // Try to use APP_URL, then origin from headers, then fallback to localhost
+      const baseUrl = process.env.APP_URL || (req.headers.origin as string) || 'http://localhost:3000';
+      const resetLink = `${baseUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
       await sendEmail(
         email,
