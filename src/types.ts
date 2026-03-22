@@ -18,9 +18,12 @@ export interface User {
   email: string;
   role: 'owner' | 'employee' | 'admin';
   shopName: string;
+  shopAddress?: string;
+  shopPhone?: string;
   plan: 'free' | 'premium';
   logo_url?: string;
   language?: string;
+  theme?: 'light';
   currency?: string;
   receipt_footer?: string;
   show_tax?: boolean;
@@ -108,6 +111,8 @@ export interface Sale {
   userName: string;
   items?: SaleItem[];
   shopName?: string;
+  shopAddress?: string;
+  shopPhone?: string;
   logo_url?: string;
   receipt_footer?: string;
   currency?: string;

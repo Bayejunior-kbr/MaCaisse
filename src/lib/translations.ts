@@ -37,6 +37,9 @@ export const translations = {
     name: "Nom complet",
     email: "Email",
     shop_logo: "Logo de la boutique",
+    shop_name: "Nom de la boutique",
+    shop_address: "Adresse de la boutique",
+    shop_phone: "Téléphone de la boutique",
     receipt_footer: "Pied de page des reçus",
     show_tax: "Afficher les taxes sur les reçus",
     enable_ai: "Activer les fonctionnalités IA",
@@ -200,6 +203,9 @@ export const translations = {
     name: "Full Name",
     email: "Email",
     shop_logo: "Shop Logo",
+    shop_name: "Shop Name",
+    shop_address: "Shop Address",
+    shop_phone: "Shop Phone",
     receipt_footer: "Receipt Footer",
     show_tax: "Show tax on receipts",
     enable_ai: "Enable AI features",
@@ -363,6 +369,9 @@ export const translations = {
     name: "Nombre completo",
     email: "Correo electrónico",
     shop_logo: "Logo de la tienda",
+    shop_name: "Nombre de la tienda",
+    shop_address: "Dirección de la tienda",
+    shop_phone: "Teléfono de la tienda",
     receipt_footer: "Pie de página del recibo",
     show_tax: "Mostrar impuestos en los recibos",
     enable_ai: "Activar funciones de IA",
@@ -526,6 +535,9 @@ export const translations = {
     name: "الاسم الكامل",
     email: "البريد الإلكتروني",
     shop_logo: "شعار المتجر",
+    shop_name: "اسم المتجر",
+    shop_address: "عنوان المتجر",
+    shop_phone: "هاتف المتجر",
     receipt_footer: "تذييل الإيصال",
     show_tax: "إظهار الضرائب على الإيصالات",
     enable_ai: "تفعيل ميزات الذكاء الاصطناعي",
@@ -660,5 +672,12 @@ export const useTranslation = (lang: Language = 'fr') => {
   const t = (key: keyof typeof translations['fr']) => {
     return translations[lang][key] || translations['fr'][key];
   };
-  return { t };
+
+  const changeLanguage = (newLang: Language) => {
+    // This is a simple implementation, in a real app you might use a context or state
+    localStorage.setItem('language', newLang);
+    window.location.reload(); // Simplest way to apply language change globally with this custom hook
+  };
+
+  return { t, i18n: { changeLanguage } };
 };

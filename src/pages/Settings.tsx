@@ -11,18 +11,22 @@ import {
   Plus,
   Bell,
   MessageSquare,
-  AlertCircle
+  AlertCircle,
+  Store
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useTranslation, Language } from '../lib/translations';
 import { User as UserType } from '../types';
 
 export default function Settings({ user, onUpdateUser }: { user: UserType, onUpdateUser: (user: UserType) => void }) {
-  const { t } = useTranslation(user.language as Language || 'fr');
+  const { t, i18n } = useTranslation(user.language as Language || 'fr');
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'shop' | 'notifications'>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState({
     name: user.name || '',
+    shopName: user.shopName || '',
+    shopAddress: user.shopAddress || '',
+    shopPhone: user.shopPhone || '',
     language: user.language || 'fr',
     currency: user.currency || 'FCFA',
     receipt_footer: user.receipt_footer || '',
@@ -78,7 +82,17 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
         });
       }
 
-      const { name, ...shopSettings } = newSettings;
+      const { name, language: langSetting, currency: currSetting, ...shopSettings } = newSettings;
+      
+      // Handle language and currency separately as they are now free too
+      if (langSetting || currSetting) {
+        if (langSetting) {
+          localStorage.setItem('language', langSetting);
+          i18n.changeLanguage(langSetting as Language);
+        }
+        // These will be updated in the final state update below
+      }
+
       if (Object.keys(shopSettings).length > 0) {
         if (!isPremium && activeTab !== 'profile') {
           console.log("Premium required for this action");
@@ -86,6 +100,21 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
         }
 
         const endpoint = activeTab === 'notifications' ? '/api/shop/notifications/settings' : '/api/shop/settings';
+        
+        // Map shopName to name for the shop settings API
+        const payload = { ...shopSettings };
+        if ('shopName' in payload) {
+          (payload as any).name = payload.shopName;
+          delete (payload as any).shopName;
+        }
+        if ('shopAddress' in payload) {
+          (payload as any).address = payload.shopAddress;
+          delete (payload as any).shopAddress;
+        }
+        if ('shopPhone' in payload) {
+          (payload as any).phone = payload.shopPhone;
+          delete (payload as any).shopPhone;
+        }
 
         await fetch(endpoint, {
           method: 'POST',
@@ -93,7 +122,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(shopSettings)
+          body: JSON.stringify(payload)
         });
       }
 
@@ -101,6 +130,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
       if (newSettings.language) {
         localStorage.setItem('language', newSettings.language);
       }
+      
       onUpdateUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setSettings(prev => ({ ...prev, ...newSettings }));
@@ -131,7 +161,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
 
   const tabs = [
     { id: 'profile', label: t('profile'), icon: User },
-    { id: 'appearance', label: t('appearance'), icon: Palette, premium: true },
+    { id: 'appearance', label: t('appearance'), icon: Palette },
     ...(user.role === 'owner' || user.role === 'admin' ? [
       { id: 'shop', label: t('shop'), icon: ImageIcon, premium: true },
       { id: 'notifications', label: t('notifications'), icon: Bell, premium: true }
@@ -276,42 +306,80 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
           {activeTab === 'shop' && (
             <div className="p-6 md:p-8 space-y-8">
               <div className="space-y-4">
-                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <ImageIcon size={20} className="text-emerald-600" />
-                    {t('shop_logo')}
-                  </h3>
-                  <div className="flex flex-col sm:flex-row items-center gap-6">
-                    <div 
-                      className="w-28 h-28 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer overflow-hidden relative shadow-inner"
-                      onClick={() => document.getElementById('logo-upload')?.click()}
-                    >
-                      {settings.logo_url ? (
-                        <img src={settings.logo_url} alt="Logo" className="w-full h-full object-contain p-2" />
-                      ) : (
-                        <>
-                          <Plus size={24} />
-                          <span className="text-[10px] font-bold mt-1">Logo</span>
-                        </>
-                      )}
-                      <input 
-                        type="file" 
-                        id="logo-upload" 
-                        className="hidden" 
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                      />
-                    </div>
-                    <div className="flex-1 text-center sm:text-left">
-                      <p className="text-sm text-slate-600 mb-3">Format recommandé: PNG ou SVG (max 2Mo)</p>
-                      <button 
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <Store size={20} className="text-emerald-600" />
+                  {t('shop')}
+                </h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 ml-1">{t('shop_name')}</label>
+                    <input 
+                      type="text" 
+                      value={settings.shopName}
+                      onChange={(e) => setSettings(prev => ({ ...prev, shopName: e.target.value }))}
+                      onBlur={() => handleSave({ shopName: settings.shopName })}
+                      placeholder="Ex: Ma Super Boutique"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 ml-1">{t('shop_address')}</label>
+                    <input 
+                      type="text" 
+                      value={settings.shopAddress}
+                      onChange={(e) => setSettings(prev => ({ ...prev, shopAddress: e.target.value }))}
+                      onBlur={() => handleSave({ shopAddress: settings.shopAddress })}
+                      placeholder="Ex: 123 Rue de la Boutique, Ville"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 ml-1">{t('shop_phone')}</label>
+                    <input 
+                      type="text" 
+                      value={settings.shopPhone}
+                      onChange={(e) => setSettings(prev => ({ ...prev, shopPhone: e.target.value }))}
+                      onBlur={() => handleSave({ shopPhone: settings.shopPhone })}
+                      placeholder="Ex: +225 0102030405"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 ml-1">{t('shop_logo')}</label>
+                    <div className="flex flex-col sm:flex-row items-center gap-6 p-6 bg-slate-50/50 rounded-2xl border border-slate-200">
+                      <div 
+                        className="w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden group cursor-pointer"
                         onClick={() => document.getElementById('logo-upload')?.click()}
-                        className="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-200 transition-all"
                       >
-                        Charger une image
-                      </button>
+                        {settings.logo_url ? (
+                          <img src={settings.logo_url} alt="Logo" className="w-full h-full object-contain p-2" />
+                        ) : (
+                          <>
+                            <Plus size={24} />
+                            <span className="text-[10px] font-bold mt-1">Logo</span>
+                          </>
+                        )}
+                        <input 
+                          type="file" 
+                          id="logo-upload" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                        />
+                      </div>
+                      <div className="flex-1 text-center sm:text-left">
+                        <p className="text-sm text-slate-600 mb-3">Format recommandé: PNG ou SVG (max 2Mo)</p>
+                        <button 
+                          onClick={() => document.getElementById('logo-upload')?.click()}
+                          className="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-200 transition-all"
+                        >
+                          Charger une image
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
+              </div>
 
                 <div className="space-y-4">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -474,7 +542,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                         alert('Erreur réseau');
                       }
                     }}
-                    className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-700 transition-all active:scale-95 shadow-lg shadow-slate-100"
+                    className="px-8 py-3 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all active:scale-95 shadow-lg shadow-slate-100"
                   >
                     {t('test')}
                   </button>

@@ -347,6 +347,8 @@ const initDb = async () => {
       CREATE TABLE IF NOT EXISTS shops (
         id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
         name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
         plan TEXT DEFAULT 'free',
         logo_url TEXT,
         theme TEXT DEFAULT 'light',
@@ -542,6 +544,8 @@ const initDb = async () => {
         { table: "shops", column: "is_signaled", type: "INTEGER DEFAULT 0" },
         { table: "shops", column: "subscription_expires_at", type: "TIMESTAMP" },
         { table: "shops", column: "has_ai_features", type: "INTEGER DEFAULT 0" },
+        { table: "shops", column: "address", type: "TEXT" },
+        { table: "shops", column: "phone", type: "TEXT" },
         { table: "sales", column: "discount_amount", type: "REAL DEFAULT 0" },
         { table: "products", column: "category_id", type: "INTEGER REFERENCES categories(id) ON DELETE SET NULL" },
         { table: "products", column: "barcode", type: "TEXT" },
@@ -597,6 +601,8 @@ const initDb = async () => {
         "ALTER TABLE shops ADD COLUMN is_signaled INTEGER DEFAULT 0",
         "ALTER TABLE shops ADD COLUMN subscription_expires_at DATETIME",
         "ALTER TABLE shops ADD COLUMN has_ai_features INTEGER DEFAULT 0",
+        "ALTER TABLE shops ADD COLUMN address TEXT",
+        "ALTER TABLE shops ADD COLUMN phone TEXT",
         "ALTER TABLE sales ADD COLUMN discount_amount REAL DEFAULT 0",
         "ALTER TABLE products ADD COLUMN category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL",
         "ALTER TABLE products ADD COLUMN barcode TEXT",
@@ -1172,9 +1178,11 @@ const authenticate = async (req: any, res: any, next: any) => {
         email: user.email, 
         role: user.role, 
         shopName: user.shopName || 'Administration Centrale', 
+        shopAddress: user.shopAddress,
+        shopPhone: user.shopPhone,
         plan: user.plan || 'premium',
         logo_url: user.logo_url,
-        theme: user.theme || 'dark',
+        theme: user.theme || 'light',
         language: user.language || 'fr',
         currency: user.currency || 'FCFA',
         receipt_footer: user.receipt_footer,
@@ -1193,8 +1201,8 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       const { email, password } = req.body;
       const user = await db.get(isPostgres 
-        ? "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
-        : "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
+        ? "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
+        : "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
       
       if (!user || !(await bcrypt.compare(password, user.password_hash))) {
         return res.status(401).json({ error: "Invalid credentials" });
@@ -1216,9 +1224,11 @@ const authenticate = async (req: any, res: any, next: any) => {
       email: user.email, 
       role: user.role, 
       shopName: user.shopName || 'Administration Centrale', 
+      shopAddress: user.shopAddress,
+      shopPhone: user.shopPhone,
       plan: user.plan || 'premium',
       logo_url: user.logo_url,
-      theme: user.theme || 'dark',
+      theme: user.theme || 'light',
       language: user.language || 'fr',
       currency: user.currency || 'FCFA',
       receipt_footer: user.receipt_footer,
@@ -1262,8 +1272,8 @@ const authenticate = async (req: any, res: any, next: any) => {
 
       // Check if user exists
       let user = await db.get(isPostgres 
-        ? "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
-        : "SELECT u.*, s.name as shopName, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
+        ? "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
+        : "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
 
       if (!user) {
         // Create new shop and user if not exists
@@ -1321,6 +1331,8 @@ const authenticate = async (req: any, res: any, next: any) => {
         email: user.email, 
         role: user.role, 
         shopName: user.shopName, 
+        shopAddress: user.shopAddress,
+        shopPhone: user.shopPhone,
         plan: user.plan || 'free',
         logo_url: user.logo_url,
         theme: user.theme || 'light',
@@ -1342,11 +1354,11 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/auth/me", authenticate, async (req: any, res) => {
     try {
       const user = await db.get(isPostgres 
-        ? `SELECT u.*, sh.name as "shopName", sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
+        ? `SELECT u.*, sh.name as "shopName", sh.address as "shopAddress", sh.phone as "shopPhone", sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
            FROM users u 
            LEFT JOIN shops sh ON u.shop_id = sh.id 
            WHERE u.id = $1::int`
-        : `SELECT u.*, sh.name as shopName, sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
+        : `SELECT u.*, sh.name as shopName, sh.address as shopAddress, sh.phone as shopPhone, sh.logo_url, sh.plan, sh.theme, sh.language, sh.currency, sh.receipt_footer, sh.show_tax, sh.sms_enabled, sh.whatsapp_enabled, sh.notification_template
            FROM users u 
            LEFT JOIN shops sh ON u.shop_id = sh.id 
            WHERE u.id = ?`, 
@@ -1361,6 +1373,8 @@ const authenticate = async (req: any, res: any, next: any) => {
         email: user.email, 
         role: user.role, 
         shopName: user.shopName || (user.role === 'admin' ? 'Administration Centrale' : 'Ma Boutique'), 
+        shopAddress: user.shopAddress,
+        shopPhone: user.shopPhone,
         plan: user.plan || 'free',
         logo_url: user.logo_url,
         theme: user.theme || 'light',
@@ -1446,19 +1460,21 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   app.post("/api/shop/settings", authenticate, async (req: any, res) => {
     try {
-      const { logo_url, theme, language, currency, receipt_footer, show_tax, has_ai_features } = req.body;
+      const { name, logo_url, theme, language, currency, receipt_footer, show_tax, has_ai_features } = req.body;
       await db.run(isPostgres
         ? `UPDATE shops 
-           SET logo_url = COALESCE($1::text, logo_url), 
-               theme = COALESCE($2::text, theme), 
-               language = COALESCE($3::text, language), 
-               currency = COALESCE($4::text, currency), 
-               receipt_footer = COALESCE($5::text, receipt_footer), 
-               show_tax = COALESCE($6::int, show_tax),
-               has_ai_features = COALESCE($7::int, has_ai_features)
-           WHERE id = $8::int`
+           SET name = COALESCE($1::text, name),
+               logo_url = COALESCE($2::text, logo_url), 
+               theme = COALESCE($3::text, theme), 
+               language = COALESCE($4::text, language), 
+               currency = COALESCE($5::text, currency), 
+               receipt_footer = COALESCE($6::text, receipt_footer), 
+               show_tax = COALESCE($7::int, show_tax),
+               has_ai_features = COALESCE($8::int, has_ai_features)
+           WHERE id = $9::int`
         : `UPDATE shops 
-           SET logo_url = COALESCE(?, logo_url), 
+           SET name = COALESCE(?, name),
+               logo_url = COALESCE(?, logo_url), 
                theme = COALESCE(?, theme), 
                language = COALESCE(?, language), 
                currency = COALESCE(?, currency), 
@@ -1466,7 +1482,7 @@ const authenticate = async (req: any, res: any, next: any) => {
                show_tax = COALESCE(?, show_tax),
                has_ai_features = COALESCE(?, has_ai_features)
            WHERE id = ?`,
-        logo_url, theme, language, currency, receipt_footer, 
+        name, logo_url, theme, language, currency, receipt_footer, 
         show_tax === undefined ? null : (show_tax ? 1 : 0), 
         has_ai_features === undefined ? null : (has_ai_features ? 1 : 0),
         req.user.shopId);
@@ -2076,14 +2092,14 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.get("/api/sales/:id", authenticate, async (req: any, res) => {
     try {
       const sale = await db.get(isPostgres
-        ? `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
+        ? `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName, sh.address as shopAddress, sh.phone as shopPhone, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
                  c.name as customerName, c.phone as customerPhone, c.address as customerAddress
           FROM sales s 
           JOIN users u ON s.user_id = u.id 
           LEFT JOIN shops sh ON s.shop_id = sh.id
           LEFT JOIN customers c ON s.customer_id = c.id
           WHERE s.id = $1::int AND s.shop_id = $2::int`
-        : `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
+        : `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName, sh.address as shopAddress, sh.phone as shopPhone, sh.logo_url, sh.receipt_footer, sh.currency, sh.show_tax,
                  c.name as customerName, c.phone as customerPhone, c.address as customerAddress
           FROM sales s 
           JOIN users u ON s.user_id = u.id 

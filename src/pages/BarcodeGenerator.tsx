@@ -229,15 +229,51 @@ export default function BarcodeGenerator() {
                       <p className="font-bold text-slate-800 mb-1">{selectedProduct.name}</p>
                     )}
                     
-                    <Barcode 
-                      value={selectedProduct.barcode || 'NO-BARCODE'}
-                      format={settings.format}
-                      width={settings.width}
-                      height={settings.height}
-                      fontSize={settings.fontSize}
-                      margin={settings.margin}
-                      displayValue={settings.displayValue}
-                    />
+                    {selectedProduct.barcode ? (
+                      <Barcode 
+                        value={selectedProduct.barcode}
+                        format={settings.format}
+                        width={settings.width}
+                        height={settings.height}
+                        fontSize={settings.fontSize}
+                        margin={settings.margin}
+                        displayValue={settings.displayValue}
+                      />
+                    ) : (
+                      <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-center space-y-3">
+                        <AlertCircle className="mx-auto text-amber-500" size={32} />
+                        <p className="text-sm font-medium text-amber-800">
+                          Ce produit n'a pas de code-barres.
+                        </p>
+                        <button
+                          onClick={async () => {
+                            const newBarcode = Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0');
+                            try {
+                              const res = await fetch(`/api/products/${selectedProduct.id}`, {
+                                method: 'PUT',
+                                headers: { 
+                                  'Content-Type': 'application/json',
+                                  'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                },
+                                body: JSON.stringify({
+                                  ...selectedProduct,
+                                  barcode: newBarcode
+                                })
+                              });
+                              if (res.ok) {
+                                setSelectedProduct({ ...selectedProduct, barcode: newBarcode });
+                                fetchProducts();
+                              }
+                            } catch (err) {
+                              console.error("Error updating barcode:", err);
+                            }
+                          }}
+                          className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors"
+                        >
+                          Générer un code maintenant
+                        </button>
+                      </div>
+                    )}
 
                     {settings.showPrice && (
                       <p className="text-lg font-black text-emerald-600 mt-1">

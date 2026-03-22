@@ -288,7 +288,7 @@ export default function POS() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Facture - ${lastSale.shopName}</title>
+            <title>${t('invoice')} - ${lastSale.shopName}</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
               @page { size: A4; margin: 20mm; }
@@ -307,36 +307,36 @@ export default function POS() {
                   <p class="text-slate-500 text-sm">Solutions de Gestion Intelligente</p>
                 </div>
                 <div class="text-right">
-                  <h2 class="text-5xl font-black text-slate-200 uppercase mb-4">FACTURE</h2>
+                  <h2 class="text-5xl font-black text-slate-200 uppercase mb-4">${t('invoice').toUpperCase()}</h2>
                   <div class="space-y-1 text-sm">
-                    <p><span class="font-bold text-slate-400 uppercase mr-2">N° Facture:</span> <span class="font-mono">#INV-${lastSale.id.toString().padStart(6, '0')}</span></p>
-                    <p><span class="font-bold text-slate-400 uppercase mr-2">Date:</span> ${new Date(lastSale.created_at || '').toLocaleDateString('fr-FR')}</p>
-                    <p><span class="font-bold text-slate-400 uppercase mr-2">Vendeur:</span> ${lastSale.userName}</p>
+                    <p><span class="font-bold text-slate-400 uppercase mr-2">${t('invoice_number')}:</span> <span class="font-mono">#INV-${lastSale.id.toString().padStart(6, '0')}</span></p>
+                    <p><span class="font-bold text-slate-400 uppercase mr-2">${t('date')}:</span> ${new Date(lastSale.created_at || '').toLocaleDateString(localStorage.getItem('language') === 'fr' ? 'fr-FR' : 'en-US')}</p>
+                    <p><span class="font-bold text-slate-400 uppercase mr-2">${t('seller')}:</span> ${lastSale.userName}</p>
                   </div>
                 </div>
               </div>
 
               <div class="grid grid-cols-2 gap-12 mb-12">
                 <div>
-                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">Client</h3>
+                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">${t('customer')}</h3>
                   ${lastSale.customerName ? `
                     <p class="text-xl font-bold text-slate-900 mb-1">${lastSale.customerName}</p>
                     <p class="text-slate-600">${lastSale.customerPhone || ''}</p>
-                  ` : '<p class="text-slate-400 italic">Client de passage</p>'}
+                  ` : `<p class="text-slate-400 italic">${t('guest_customer')}</p>`}
                 </div>
                 <div>
-                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">Mode de Paiement</h3>
-                  <p class="text-lg font-bold text-slate-900 uppercase">${lastSale.payment_method === 'cash' ? 'Espèces' : 'Mobile Money'}</p>
+                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">${t('payment_method')}</h3>
+                  <p class="text-lg font-bold text-slate-900 uppercase">${lastSale.payment_method === 'cash' ? t('cash') : t('mobile_money')}</p>
                 </div>
               </div>
 
               <table class="w-full mb-12">
                 <thead>
                   <tr class="border-b-2 border-slate-900">
-                    <th class="py-4 text-left text-xs font-black text-slate-900 uppercase tracking-widest">Description</th>
-                    <th class="py-4 text-center text-xs font-black text-slate-900 uppercase tracking-widest">Quantité</th>
-                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">Prix Unitaire</th>
-                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">Total</th>
+                    <th class="py-4 text-left text-xs font-black text-slate-900 uppercase tracking-widest">${t('description')}</th>
+                    <th class="py-4 text-center text-xs font-black text-slate-900 uppercase tracking-widest">${t('quantity')}</th>
+                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">${t('unit_price')}</th>
+                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">${t('total')}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -356,31 +356,31 @@ export default function POS() {
               <div class="flex justify-end">
                 <div class="w-72 space-y-3">
                   <div class="flex justify-between text-slate-500">
-                    <span class="font-bold uppercase text-xs tracking-widest">Sous-total</span>
+                    <span class="font-bold uppercase text-xs tracking-widest">${t('subtotal')}</span>
                     <span class="font-bold">${formatCurrency((lastSale.total_amount || 0) + (lastSale.discount_amount || 0) - (lastSale.tax_amount || 0), lastSale.currency)}</span>
                   </div>
                   ${lastSale.tax_amount ? `
                     <div class="flex justify-between text-slate-500">
-                      <span class="font-bold uppercase text-xs tracking-widest">TVA</span>
+                      <span class="font-bold uppercase text-xs tracking-widest">${t('tax')}</span>
                       <span class="font-bold">${formatCurrency(lastSale.tax_amount, lastSale.currency)}</span>
                     </div>
                   ` : ''}
                   ${lastSale.discount_amount ? `
                     <div class="flex justify-between text-rose-500">
-                      <span class="font-bold uppercase text-xs tracking-widest">Remise</span>
+                      <span class="font-bold uppercase text-xs tracking-widest">${t('discount')}</span>
                       <span class="font-bold">-${formatCurrency(lastSale.discount_amount, lastSale.currency)}</span>
                     </div>
                   ` : ''}
                   <div class="flex justify-between items-center pt-4 border-t-2 border-slate-900">
-                    <span class="font-black uppercase text-sm tracking-widest text-slate-900">Total Net</span>
+                    <span class="font-black uppercase text-sm tracking-widest text-slate-900">${t('net_total')}</span>
                     <span class="text-2xl font-black text-emerald-600">${formatCurrency(lastSale.total_amount || 0, lastSale.currency)}</span>
                   </div>
                 </div>
               </div>
 
               <div class="mt-24 pt-8 border-t border-slate-100 text-center">
-                <p class="text-slate-400 text-xs uppercase tracking-widest font-bold mb-2">${lastSale.receipt_footer || 'Merci de votre confiance !'}</p>
-                <p class="text-slate-300 text-[10px]">Généré par ShopMaster Pro</p>
+                <p class="text-slate-400 text-xs uppercase tracking-widest font-bold mb-2">${lastSale.receipt_footer || t('thanks_trust')}</p>
+                <p class="text-slate-300 text-[10px]">${t('generated_by')}</p>
               </div>
             </div>
             <script>
@@ -406,7 +406,7 @@ export default function POS() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Facture - ${lastSale.shopName}</title>
+            <title>${t('invoice')} - ${lastSale.shopName}</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
               @page { size: A4; margin: 20mm; }
@@ -422,39 +422,41 @@ export default function POS() {
                 <div>
                   ${lastSale.logo_url ? `<img src="${lastSale.logo_url}" class="h-20 w-auto mb-4 object-contain" />` : ''}
                   <h1 class="text-3xl font-black text-slate-900 uppercase tracking-tighter">${lastSale.shopName}</h1>
+                  ${lastSale.shopAddress ? `<p class="text-slate-600 text-sm font-bold">${lastSale.shopAddress}</p>` : ''}
+                  ${lastSale.shopPhone ? `<p class="text-slate-600 text-sm font-bold">${lastSale.shopPhone}</p>` : ''}
                   <p class="text-slate-500 text-sm">Solutions de Gestion Intelligente</p>
                 </div>
                 <div class="text-right">
-                  <h2 class="text-5xl font-black text-slate-200 uppercase mb-4">FACTURE</h2>
+                  <h2 class="text-5xl font-black text-slate-200 uppercase mb-4">${t('invoice').toUpperCase()}</h2>
                   <div class="space-y-1 text-sm">
-                    <p><span class="font-bold text-slate-400 uppercase mr-2">N° Facture:</span> <span class="font-mono">#INV-${lastSale.id.toString().padStart(6, '0')}</span></p>
-                    <p><span class="font-bold text-slate-400 uppercase mr-2">Date:</span> ${new Date(lastSale.created_at || '').toLocaleDateString('fr-FR')}</p>
-                    <p><span class="font-bold text-slate-400 uppercase mr-2">Vendeur:</span> ${lastSale.userName}</p>
+                    <p><span class="font-bold text-slate-400 uppercase mr-2">${t('invoice_number')}:</span> <span class="font-mono">#INV-${lastSale.id.toString().padStart(6, '0')}</span></p>
+                    <p><span class="font-bold text-slate-400 uppercase mr-2">${t('date')}:</span> ${new Date(lastSale.created_at || '').toLocaleDateString(localStorage.getItem('language') === 'fr' ? 'fr-FR' : 'en-US')}</p>
+                    <p><span class="font-bold text-slate-400 uppercase mr-2">${t('seller')}:</span> ${lastSale.userName}</p>
                   </div>
                 </div>
               </div>
 
               <div class="grid grid-cols-2 gap-12 mb-12">
                 <div>
-                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">Client</h3>
+                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">${t('customer')}</h3>
                   ${lastSale.customerName ? `
                     <p class="text-xl font-bold text-slate-900 mb-1">${lastSale.customerName}</p>
                     <p class="text-slate-600">${lastSale.customerPhone || ''}</p>
-                  ` : '<p class="text-slate-400 italic">Client de passage</p>'}
+                  ` : `<p class="text-slate-400 italic">${t('guest_customer')}</p>`}
                 </div>
                 <div>
-                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">Mode de Paiement</h3>
-                  <p class="text-lg font-bold text-slate-900 uppercase">${lastSale.payment_method === 'cash' ? 'Espèces' : 'Mobile Money'}</p>
+                  <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">${t('payment_method')}</h3>
+                  <p class="text-lg font-bold text-slate-900 uppercase">${lastSale.payment_method === 'cash' ? t('cash') : t('mobile_money')}</p>
                 </div>
               </div>
 
               <table class="w-full mb-12">
                 <thead>
                   <tr class="border-b-2 border-slate-900">
-                    <th class="py-4 text-left text-xs font-black text-slate-900 uppercase tracking-widest">Description</th>
-                    <th class="py-4 text-center text-xs font-black text-slate-900 uppercase tracking-widest">Quantité</th>
-                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">Prix Unitaire</th>
-                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">Total</th>
+                    <th class="py-4 text-left text-xs font-black text-slate-900 uppercase tracking-widest">${t('description')}</th>
+                    <th class="py-4 text-center text-xs font-black text-slate-900 uppercase tracking-widest">${t('quantity')}</th>
+                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">${t('unit_price')}</th>
+                    <th class="py-4 text-right text-xs font-black text-slate-900 uppercase tracking-widest">${t('total')}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -474,31 +476,31 @@ export default function POS() {
               <div class="flex justify-end">
                 <div class="w-72 space-y-3">
                   <div class="flex justify-between text-slate-500">
-                    <span class="font-bold uppercase text-xs tracking-widest">Sous-total</span>
+                    <span class="font-bold uppercase text-xs tracking-widest">${t('subtotal')}</span>
                     <span class="font-bold">${formatCurrency((lastSale.total_amount || 0) + (lastSale.discount_amount || 0) - (lastSale.tax_amount || 0), lastSale.currency)}</span>
                   </div>
                   ${lastSale.tax_amount ? `
                     <div class="flex justify-between text-slate-500">
-                      <span class="font-bold uppercase text-xs tracking-widest">TVA</span>
+                      <span class="font-bold uppercase text-xs tracking-widest">${t('tax')}</span>
                       <span class="font-bold">${formatCurrency(lastSale.tax_amount, lastSale.currency)}</span>
                     </div>
                   ` : ''}
                   ${lastSale.discount_amount ? `
                     <div class="flex justify-between text-rose-500">
-                      <span class="font-bold uppercase text-xs tracking-widest">Remise</span>
+                      <span class="font-bold uppercase text-xs tracking-widest">${t('discount')}</span>
                       <span class="font-bold">-${formatCurrency(lastSale.discount_amount, lastSale.currency)}</span>
                     </div>
                   ` : ''}
                   <div class="flex justify-between items-center pt-4 border-t-2 border-slate-900">
-                    <span class="font-black uppercase text-sm tracking-widest text-slate-900">Total Net</span>
+                    <span class="font-black uppercase text-sm tracking-widest text-slate-900">${t('net_total')}</span>
                     <span class="text-2xl font-black text-emerald-600">${formatCurrency(lastSale.total_amount || 0, lastSale.currency)}</span>
                   </div>
                 </div>
               </div>
 
               <div class="mt-24 pt-8 border-t border-slate-100 text-center">
-                <p class="text-slate-400 text-xs uppercase tracking-widest font-bold mb-2">${lastSale.receipt_footer || 'Merci de votre confiance !'}</p>
-                <p class="text-slate-300 text-[10px]">Généré par ShopMaster Pro</p>
+                <p class="text-slate-400 text-xs uppercase tracking-widest font-bold mb-2">${lastSale.receipt_footer || t('thanks_trust')}</p>
+                <p class="text-slate-300 text-[10px]">${t('generated_by')}</p>
               </div>
             </div>
             <script>
@@ -539,6 +541,8 @@ export default function POS() {
               <div class="text-center mb-4">
                 ${lastSale.logo_url ? `<img src="${lastSale.logo_url}" class="h-12 w-auto mx-auto mb-2 object-contain" />` : ''}
                 <h2 class="text-sm font-bold uppercase">${lastSale.shopName}</h2>
+                ${lastSale.shopAddress ? `<p class="text-[8px] font-bold">${lastSale.shopAddress}</p>` : ''}
+                ${lastSale.shopPhone ? `<p class="text-[8px] font-bold">${lastSale.shopPhone}</p>` : ''}
                 <p class="text-[8px] opacity-50">${t('receipt').toUpperCase()}</p>
               </div>
 
@@ -624,6 +628,8 @@ export default function POS() {
               <div class="text-center mb-4">
                 ${lastSale?.logo_url ? `<img src="${lastSale.logo_url}" class="h-12 w-auto mx-auto mb-2 object-contain" />` : ''}
                 <h2 class="text-sm font-bold uppercase">${lastSale?.shopName}</h2>
+                ${lastSale?.shopAddress ? `<p class="text-[8px] font-bold">${lastSale.shopAddress}</p>` : ''}
+                ${lastSale?.shopPhone ? `<p class="text-[8px] font-bold">${lastSale.shopPhone}</p>` : ''}
                 <p class="text-[8px] opacity-50">REÇU DE VENTE</p>
               </div>
 
@@ -744,7 +750,7 @@ export default function POS() {
                 ref={searchInputRef}
                 type="text" 
                 placeholder={t('search')} 
-                className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm w-full sm:w-64"
+                className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 outline-none transition-all text-sm w-full sm:w-64"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
@@ -975,7 +981,7 @@ export default function POS() {
       {showSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowSuccess(false)}></div>
-          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center">
+          <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center border border-slate-200">
             <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 size={48} />
             </div>

@@ -144,6 +144,12 @@ export default function Inventory() {
     const url = editingProduct ? `/api/products/${editingProduct.id}` : '/api/products';
     const method = editingProduct ? 'PUT' : 'POST';
 
+    // Auto-generate barcode if missing for new products
+    let finalBarcode = formData.barcode;
+    if (!editingProduct && !finalBarcode) {
+      finalBarcode = Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0');
+    }
+
     try {
       const res = await fetch(url, {
         method,
@@ -153,7 +159,7 @@ export default function Inventory() {
         },
         body: JSON.stringify({
           name: formData.name,
-          barcode: formData.barcode || null,
+          barcode: finalBarcode || null,
           category_id: formData.category_id ? parseInt(formData.category_id) : null,
           supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null,
           purchase_price: parseFloat(formData.purchase_price) || 0,
@@ -552,21 +558,24 @@ export default function Inventory() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">{t('barcode')}</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      placeholder="Scanner ou saisir..."
-                      className="flex-1 px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
-                      value={formData.barcode}
-                      onChange={(e) => setFormData({...formData, barcode: e.target.value})}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setFormData({...formData, barcode: Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0')})}
-                      className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors text-xs font-bold whitespace-nowrap"
-                    >
-                      {t('generate')}
-                    </button>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Scanner ou vide pour auto-générer"
+                        className="flex-1 px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
+                        value={formData.barcode}
+                        onChange={(e) => setFormData({...formData, barcode: e.target.value})}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormData({...formData, barcode: Math.floor(Math.random() * 1000000000000).toString().padStart(12, '0')})}
+                        className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors text-xs font-bold whitespace-nowrap"
+                      >
+                        {t('generate')}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">Laissez vide pour générer automatiquement à l'enregistrement.</p>
                   </div>
                 </div>
               </div>
