@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate as navigateHook } from 'react-router-dom';
 import { User } from '../types';
 import { LogIn, Mail, Lock, Loader2, Store, CheckCircle2, Eye, EyeOff } from 'lucide-react';
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, signInWithCustomToken } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebase-utils';
@@ -76,36 +76,65 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
     setError('');
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const idToken = await user.getIdToken();
-      
-      // Call server to get server JWT and user data
-      const response = await fetch('/api/auth/google', {
+      // Try Firebase Auth first
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+        const idToken = await user.getIdToken();
+        
+        // Call server to get server JWT and user data
+        const response = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        });
+
+        if (response.ok) {
+          const { token, user: userData } = await response.json();
+          onLogin(userData, token);
+          navigate('/');
+          return;
+        }
+      } catch (firebaseErr: any) {
+        console.log("Firebase login failed, trying server login...", firebaseErr.code);
+        // If it's a wrong password in Firebase, it's likely wrong in server too, 
+        // but let's try server anyway for legacy users who might not be in Firebase yet.
+      }
+
+      // Fallback to server-side login (for legacy users)
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken })
+        body: JSON.stringify({ email, password })
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        const { token, customToken, user: userData } = await response.json();
+        
+        // If server provided a custom token, sign in to Firebase with it
+        if (customToken) {
+          try {
+            await signInWithCustomToken(auth, customToken);
+          } catch (e) {
+            console.error("Failed to sign in with custom token:", e);
+          }
+        }
+        
+        onLogin(userData, token);
+        navigate('/');
+      } else {
         const errData = await response.json();
-        throw new Error(errData.error || "Erreur serveur lors de la connexion");
+        if (errData.error === "Invalid credentials") {
+          setError('Email ou mot de passe incorrect.');
+        } else if (errData.error && errData.error.includes("bloqué")) {
+          setError(errData.error);
+        } else {
+          setError('Une erreur est survenue lors de la connexion.');
+        }
       }
-
-      const { token, user: userData } = await response.json();
-      onLogin(userData, token);
-      navigate('/');
     } catch (err: any) {
       console.error("Login error:", err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setError('Email ou mot de passe incorrect.');
-      } else if (err.code === 'auth/operation-not-allowed') {
-        setError("La connexion par e-mail n'est pas encore activée pour cette boutique.");
-      } else if (err.message && err.message.includes('permission-denied')) {
-        setError('Accès refusé par la base de données. Vérifiez vos droits.');
-      } else {
-        setError('Une erreur est survenue : ' + (err.message || 'Veuillez réessayer.'));
-      }
+      setError('Une erreur est survenue : ' + (err.message || 'Veuillez réessayer.'));
     } finally {
       setLoading(false);
     }

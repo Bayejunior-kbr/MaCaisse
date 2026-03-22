@@ -1217,7 +1217,16 @@ const authenticate = async (req: any, res: any, next: any) => {
       .setExpirationTime("30d")
       .sign(JWT_SECRET);
     
-    res.json({ token, user: { 
+    let customToken = null;
+    if (firebaseAdmin) {
+      try {
+        customToken = await firebaseAdmin.auth().createCustomToken(user.email);
+      } catch (e) {
+        console.error("Failed to create custom token:", e);
+      }
+    }
+    
+    res.json({ token, customToken, user: { 
       id: user.id,
       shopId: user.shop_id,
       name: user.name, 
