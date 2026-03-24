@@ -1059,6 +1059,29 @@ const authenticate = async (req: any, res: any, next: any) => {
         shopId, name, email, passwordHash, "owner");
       
       const userId = isPostgres ? userResult.rows[0].id : userResult.lastInsertRowid;
+      
+      // Create user in Firebase Auth if admin is available
+      let customToken = null;
+      if (firebaseAdmin) {
+        try {
+          await firebaseAdmin.auth().createUser({
+            email,
+            password,
+            displayName: name,
+          });
+          customToken = await firebaseAdmin.auth().createCustomToken(email);
+        } catch (fbErr: any) {
+          console.error("Firebase user creation failed:", fbErr);
+          // If user already exists in Firebase, just try to get a custom token
+          if (fbErr.code === 'auth/email-already-exists') {
+            try {
+              customToken = await firebaseAdmin.auth().createCustomToken(email);
+            } catch (tokenErr) {
+              console.error("Failed to create custom token for existing user:", tokenErr);
+            }
+          }
+        }
+      }
 
       // Mark code as used
       await db.run(isPostgres ? 
@@ -1071,7 +1094,7 @@ const authenticate = async (req: any, res: any, next: any) => {
         .setExpirationTime("30d")
         .sign(JWT_SECRET);
 
-      res.json({ token, user: { 
+      res.json({ token, customToken, user: { 
         id: userId,
         name, 
         email, 
@@ -1096,20 +1119,34 @@ const authenticate = async (req: any, res: any, next: any) => {
   });
 
   app.post("/api/auth/send-code", async (req, res) => {
-    const { email } = req.body;
+    const { email, mode, password } = req.body;
     if (!email) return res.status(400).json({ error: "Email requis" });
 
     try {
       // Check if user exists
       let user;
       try {
-        user = await db.get(isPostgres ? "SELECT id FROM users WHERE email = $1::text" : "SELECT id FROM users WHERE email = ?", email);
+        user = await db.get(isPostgres ? "SELECT * FROM users WHERE email = $1::text" : "SELECT * FROM users WHERE email = ?", email);
       } catch (dbErr: any) {
         throw new Error(`Erreur base de données (check user): ${dbErr.message}`);
       }
 
-      if (!user) {
-        return res.status(404).json({ error: "Aucun compte n'est associé à cet email." });
+      if (mode === 'register') {
+        if (user) {
+          return res.status(400).json({ error: "Cet email est déjà utilisé par un autre compte." });
+        }
+      } else if (mode === 'login') {
+        if (!user) {
+          return res.status(404).json({ error: "Aucun compte n'est associé à cet email." });
+        }
+        if (!password || !(await bcrypt.compare(password, user.password_hash))) {
+          return res.status(401).json({ error: "Email ou mot de passe incorrect." });
+        }
+      } else {
+        // Default to forgot password mode or legacy behavior
+        if (!user) {
+          return res.status(404).json({ error: "Aucun compte n'est associé à cet email." });
+        }
       }
 
       // Generate 6-digit code
@@ -1126,7 +1163,9 @@ const authenticate = async (req: any, res: any, next: any) => {
       }
 
       try {
-        await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la connexion est : ${code}`);
+        const subject = mode === 'register' ? "Code de vérification pour votre inscription" : "Code de vérification ShopMaster";
+        const message = mode === 'register' ? `Votre code de vérification pour créer votre boutique est : ${code}` : `Votre code de vérification pour la connexion est : ${code}`;
+        await sendEmail(email, subject, message);
       } catch (mailErr: any) {
         throw new Error(`Erreur envoi email: ${mailErr.message}`);
       }
@@ -1176,7 +1215,16 @@ const authenticate = async (req: any, res: any, next: any) => {
         .setExpirationTime("30d")
         .sign(JWT_SECRET);
       
-      res.json({ token, user: { 
+      let customToken = null;
+      if (firebaseAdmin) {
+        try {
+          customToken = await firebaseAdmin.auth().createCustomToken(user.email);
+        } catch (e) {
+          console.error("Failed to create custom token:", e);
+        }
+      }
+      
+      res.json({ token, customToken, user: { 
         id: user.id,
         shopId: user.shop_id,
         name: user.name, 

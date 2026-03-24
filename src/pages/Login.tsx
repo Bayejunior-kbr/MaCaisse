@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate as navigateHook } from 'react-router-dom';
 import { User } from '../types';
 import { LogIn, Mail, Lock, Loader2, Store, CheckCircle2, Eye, EyeOff } from 'lucide-react';
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, signInWithCustomToken } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signInWithCustomToken } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebase-utils';
@@ -76,40 +76,51 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
     setError('');
 
     try {
-      // Try Firebase Auth first
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        const idToken = await user.getIdToken();
-        
-        // Call server to get server JWT and user data
-        const response = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken })
-        });
-
-        if (response.ok) {
-          const { token, user: userData } = await response.json();
-          onLogin(userData, token);
-          navigate('/');
-          return;
-        }
-      } catch (firebaseErr: any) {
-        console.log("Firebase login failed, trying server login...", firebaseErr.code);
-        // If it's a wrong password in Firebase, it's likely wrong in server too, 
-        // but let's try server anyway for legacy users who might not be in Firebase yet.
-      }
-
-      // Fallback to server-side login (for legacy users)
-      const response = await fetch('/api/auth/login', {
+      // Step 1: Request OTP code from server (server will check credentials)
+      const response = await fetch('/api/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, mode: 'login' })
       });
 
       if (response.ok) {
-        const { token, customToken, user: userData } = await response.json();
+        setStep('otp');
+        setLoading(false);
+      } else {
+        const errData = await response.json();
+        if (errData.error === "Email ou mot de passe incorrect.") {
+          setError('Email ou mot de passe incorrect.');
+        } else if (errData.error && errData.error.includes("bloqué")) {
+          setError(errData.error);
+        } else {
+          setError(errData.error || 'Une erreur est survenue lors de la connexion.');
+        }
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError('Une erreur est survenue : ' + (err.message || 'Veuillez réessayer.'));
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const otpValue = otp.join('');
+    if (otpValue.length !== 6) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/auth/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: otpValue, password })
+      });
+
+      if (response.ok) {
+        const { token, user: userData, customToken } = await response.json();
         
         // If server provided a custom token, sign in to Firebase with it
         if (customToken) {
@@ -124,34 +135,14 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
         navigate('/');
       } else {
         const errData = await response.json();
-        if (errData.error === "Invalid credentials") {
-          setError('Email ou mot de passe incorrect.');
-        } else if (errData.error && errData.error.includes("bloqué")) {
-          setError(errData.error);
-        } else {
-          setError('Une erreur est survenue lors de la connexion.');
-        }
+        setError(errData.error || 'Code de vérification invalide.');
       }
     } catch (err: any) {
-      console.error("Login error:", err);
-      setError('Une erreur est survenue : ' + (err.message || 'Veuillez réessayer.'));
+      console.error("OTP verification error:", err);
+      setError('Une erreur est survenue lors de la vérification.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const otpValue = otp.join('');
-    if (otpValue.length !== 6) return;
-
-    setLoading(true);
-    // In a real app, verify OTP here
-    setTimeout(() => {
-      onLogin(tempUser.userData, tempUser.token);
-      navigate('/');
-      setLoading(false);
-    }, 1500);
   };
 
   const handleOtpChange = (index: number, value: string) => {

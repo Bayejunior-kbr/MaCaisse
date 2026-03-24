@@ -5,8 +5,7 @@ import { Store, User as UserIcon, Mail, Lock, Loader2, ArrowRight, ShieldCheck, 
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
-  createUserWithEmailAndPassword,
-  updateProfile
+  signInWithCustomToken
 } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -80,46 +79,25 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
     setError('');
     
     try {
-      // Create user in Firebase Auth directly (removing OTP step for now to simplify)
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const user = userCredential.user;
-
-      // Update profile name
-      await updateProfile(user, { displayName: formData.name });
-
-      const idToken = await user.getIdToken();
-      
-      // Call server to create user and shop
-      const response = await fetch('/api/auth/google', {
+      const response = await fetch('/api/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          idToken,
-          shopName: formData.shopName
+          email: formData.email,
+          mode: 'register'
         })
       });
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || "Erreur serveur lors de la création du compte");
+        throw new Error(errData.error || "Erreur lors de l'envoi du code");
       }
 
-      const { token, user: userData } = await response.json();
-      onLogin(userData, token);
-      navigate('/');
+      setStep(2);
+      setSuccess('Code de vérification envoyé !');
     } catch (err: any) {
-      console.error("Registration error:", err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Cet email est déjà utilisé.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('Le mot de passe est trop faible.');
-      } else if (err.code === 'auth/operation-not-allowed') {
-        setError("L'inscription par e-mail n'est pas encore activée pour cette boutique.");
-      } else if (err.message && err.message.includes('permission-denied')) {
-        setError('Accès refusé par la base de données. Vérifiez vos droits.');
-      } else {
-        setError("Erreur lors de l'inscription : " + (err.message || "Veuillez réessayer."));
-      }
+      console.error("Send code error:", err);
+      setError(err.message || "Erreur lors de l'envoi du code. Veuillez réessayer.");
     } finally {
       setLoading(false);
     }
@@ -127,7 +105,51 @@ export default function Register({ onLogin }: { onLogin: (user: User, token: str
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // This is now handled by handleSendCode (renamed or merged)
+    if (!formData.code) {
+      setError('Veuillez entrer le code de vérification.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          shopName: formData.shopName,
+          code: formData.code
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erreur lors de la création du compte");
+      }
+
+      const { token, user: userData, customToken } = await response.json();
+      
+      // If server provided a custom token, sign in to Firebase with it
+      if (customToken) {
+        try {
+          await signInWithCustomToken(auth, customToken);
+        } catch (e) {
+          console.error("Failed to sign in with custom token:", e);
+        }
+      }
+
+      onLogin(userData, token);
+      navigate('/');
+    } catch (err: any) {
+      console.error("Registration error:", err);
+      setError(err.message || "Erreur lors de la création du compte. Veuillez réessayer.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleRegister = async () => {
