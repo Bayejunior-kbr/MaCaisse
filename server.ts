@@ -1318,7 +1318,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password, code } = req.body;
+      const { email, password } = req.body;
       const user = await db.get(isPostgres 
         ? "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
         : "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = ?", email);
@@ -1329,33 +1329,6 @@ const authenticate = async (req: any, res: any, next: any) => {
 
     if (user.shopStatus === 'blocked' && user.role !== 'admin') {
       return res.status(403).json({ error: "Votre compte a été bloqué par l'administrateur." });
-    }
-
-    // Check for inactivity (30 days)
-    const lastLogin = user.last_login ? new Date(user.last_login) : null;
-    const now = new Date();
-    const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-    const isInactive = !lastLogin || (now.getTime() - lastLogin.getTime() > thirtyDaysInMs);
-
-    if (isInactive && !code) {
-      return res.json({ otpRequired: true, message: "Compte inactif depuis longtemps. Un code de vérification est requis." });
-    }
-
-    if (isInactive && code) {
-      // Verify code
-      const verification = await db.get(isPostgres 
-        ? "SELECT * FROM verification_codes WHERE email = $1::text AND code = $2::text AND used = 0 AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1"
-        : "SELECT * FROM verification_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1",
-        email, code);
-
-      if (!verification) {
-        return res.status(400).json({ error: "Code invalide ou expiré." });
-      }
-
-      // Mark code as used
-      await db.run(isPostgres 
-        ? "UPDATE verification_codes SET used = 1 WHERE id = $1::int"
-        : "UPDATE verification_codes SET used = 1 WHERE id = ?", verification.id);
     }
 
     // Update last login
