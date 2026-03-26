@@ -76,30 +76,49 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
     setError('');
 
     try {
-      // Step 1: Request OTP code from server (server will check credentials)
-      const response = await fetch('/api/auth/send-code', {
+      // Step 1: Try to login directly
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, mode: 'login' })
+        body: JSON.stringify({ email, password })
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        setStep('otp');
-        setLoading(false);
-      } else {
-        const errData = await response.json();
-        if (errData.error === "Email ou mot de passe incorrect.") {
-          setError('Email ou mot de passe incorrect.');
-        } else if (errData.error && errData.error.includes("bloqué")) {
-          setError(errData.error);
+        if (data.otpRequired) {
+          // If server says OTP is required (due to inactivity), send code and show OTP step
+          const sendCodeRes = await fetch('/api/auth/send-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, mode: 'login' })
+          });
+
+          if (sendCodeRes.ok) {
+            setStep('otp');
+          } else {
+            const sendCodeData = await sendCodeRes.json();
+            setError(sendCodeData.error || "Erreur lors de l'envoi du code.");
+          }
         } else {
-          setError(errData.error || 'Une erreur est survenue lors de la connexion.');
+          // Direct login successful
+          onLogin(data.user, data.token);
+          if (data.customToken) {
+            try {
+              await signInWithCustomToken(auth, data.customToken);
+            } catch (e) {
+              console.error("Failed to sign in with custom token:", e);
+            }
+          }
+          navigate('/');
         }
-        setLoading(false);
+      } else {
+        setError(data.error || 'Une erreur est survenue lors de la connexion.');
       }
     } catch (err: any) {
       console.error("Login error:", err);
       setError('Une erreur est survenue : ' + (err.message || 'Veuillez réessayer.'));
+    } finally {
       setLoading(false);
     }
   };
@@ -113,29 +132,27 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
     setError('');
 
     try {
-      const response = await fetch('/api/auth/verify-code', {
+      // Verify OTP and login
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: otpValue, password })
+        body: JSON.stringify({ email, password, code: otpValue })
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const { token, user: userData, customToken } = await response.json();
-        
-        // If server provided a custom token, sign in to Firebase with it
-        if (customToken) {
+        onLogin(data.user, data.token);
+        if (data.customToken) {
           try {
-            await signInWithCustomToken(auth, customToken);
+            await signInWithCustomToken(auth, data.customToken);
           } catch (e) {
             console.error("Failed to sign in with custom token:", e);
           }
         }
-        
-        onLogin(userData, token);
         navigate('/');
       } else {
-        const errData = await response.json();
-        setError(errData.error || 'Code de vérification invalide.');
+        setError(data.error || 'Code de vérification invalide.');
       }
     } catch (err: any) {
       console.error("OTP verification error:", err);
@@ -267,7 +284,7 @@ export default function Login({ onLogin }: { onLogin: (user: User, token: string
         ) : (
           <div className="text-center">
             <h2 className="text-2xl font-black text-slate-900 mb-2">Vérification</h2>
-            <p className="text-slate-500 mb-8">Entrez le code envoyé par SMS</p>
+            <p className="text-slate-500 mb-8">Entrez le code envoyé par email</p>
             
             <form onSubmit={handleOtpSubmit} className="space-y-8">
               <div className="flex justify-between gap-2">
