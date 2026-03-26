@@ -375,6 +375,8 @@ const initDb = async () => {
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'employee',
         last_login ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
+        reset_token TEXT,
+        reset_token_expires ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
         created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -573,6 +575,7 @@ const initDb = async () => {
         { table: "sale_items", column: "product_name", type: "TEXT" },
         { table: "users", column: "reset_token", type: "TEXT" },
         { table: "users", column: "reset_token_expires", type: isPostgres ? "TIMESTAMP" : "DATETIME" },
+        { table: "users", column: "last_login", type: isPostgres ? "TIMESTAMP" : "DATETIME" },
       ];
 
       // Get all existing columns in one query
@@ -632,6 +635,7 @@ const initDb = async () => {
         "ALTER TABLE sale_items ADD COLUMN product_name TEXT",
         "ALTER TABLE users ADD COLUMN reset_token TEXT",
         "ALTER TABLE users ADD COLUMN reset_token_expires DATETIME",
+        "ALTER TABLE users ADD COLUMN last_login DATETIME",
       ];
       for (const sql of sqliteMigrations) {
         try { 
@@ -1331,10 +1335,14 @@ const authenticate = async (req: any, res: any, next: any) => {
       return res.status(403).json({ error: "Votre compte a été bloqué par l'administrateur." });
     }
 
-    // Update last login
-    await db.run(isPostgres 
-      ? "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1::int" 
-      : "UPDATE users SET last_login = datetime('now') WHERE id = ?", user.id);
+    // Update last login (non-blocking)
+    try {
+      await db.run(isPostgres 
+        ? "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1::int" 
+        : "UPDATE users SET last_login = datetime('now') WHERE id = ?", user.id);
+    } catch (e) {
+      console.warn("Failed to update last_login:", e);
+    }
 
     const token = await new SignJWT({ userId: user.id, shopId: user.shop_id, role: user.role })
       .setProtectedHeader({ alg: "HS256" })
