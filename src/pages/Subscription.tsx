@@ -1,377 +1,577 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  CreditCard, 
-  Smartphone, 
-  CheckCircle2, 
-  Zap, 
-  ShieldCheck, 
-  BarChart3, 
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  AlertCircle,
+  ArrowRight,
+  BarChart3,
   BrainCircuit,
-  Loader2,
-  X,
+  Check,
+  CheckCircle2,
   Clock,
-  AlertCircle
+  CreditCard,
+  Loader2,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  X,
+  Zap,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
 import { SubscriptionTimer } from '../components/SubscriptionTimer';
 
-export default function Subscription({ user, onUpdateUser }: { user: User, onUpdateUser: (user: User) => void }) {
+type Duration = 1 | 3 | 6 | 12;
+type PaymentMethod = 'wave' | 'orange' | 'card';
+
+type SubscriptionRequest = {
+  id: string | number;
+  payment_method: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected' | string;
+};
+
+const durations: {
+  months: Duration;
+  price: number;
+  label: string;
+  saving?: string;
+}[] = [
+  { months: 1, price: 10000, label: '1 mois' },
+  { months: 3, price: 27000, label: '3 mois', saving: '−10 %' },
+  { months: 6, price: 50000, label: '6 mois', saving: '−17 %' },
+  { months: 12, price: 90000, label: '1 an', saving: '−25 %' },
+];
+
+const formatPrice = (price: number) => price.toLocaleString('fr-FR');
+
+export default function Subscription({
+  user,
+  onUpdateUser: _onUpdateUser,
+}: {
+  user: User;
+  onUpdateUser: (user: User) => void;
+}) {
   const [loading, setLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'wave' | 'orange' | 'card'>('wave');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wave');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [transactionRef, setTransactionRef] = useState('');
-  const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
-  const [requests, setRequests] = useState<any[]>([]);
+  const [duration, setDuration] = useState<Duration>(1);
+  const [requests, setRequests] = useState<SubscriptionRequest[]>([]);
 
-  const durations = [
-    { months: 1, price: 10000, label: '1 Mois' },
-    { months: 3, price: 27000, label: '3 Mois', discount: '10%' },
-    { months: 6, price: 50000, label: '6 Mois', discount: '15%' },
-    { months: 12, price: 90000, label: '1 An', discount: '25%' },
-  ];
+  const selectedDuration = durations.find((item) => item.months === duration)!;
 
   useEffect(() => {
-    fetchRequests();
+    void fetchRequests();
   }, []);
 
   const fetchRequests = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/subscription/my-requests', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await fetch('/api/subscription/my-requests', {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        setRequests(await res.json());
+
+      if (response.ok) {
+        setRequests(await response.json());
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
     }
   };
 
   const handleRequest = async () => {
     setLoading(true);
+
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('/api/subscription/request', {
+      const response = await fetch('/api/subscription/request', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           plan: 'premium',
           duration_months: duration,
           payment_method: paymentMethod,
           phone_number: phoneNumber,
-          transaction_ref: transactionRef
-        })
+          transaction_ref: transactionRef,
+        }),
       });
-      if (res.ok) {
+
+      if (response.ok) {
         setShowPaymentModal(false);
         setPhoneNumber('');
         setTransactionRef('');
-        fetchRequests();
-        alert("Votre demande a été envoyée ! Elle sera validée par l'administrateur après vérification du paiement.");
+        void fetchRequests();
+        alert(
+          "Votre demande a été envoyée ! Elle sera validée par l'administrateur après vérification du paiement.",
+        );
       } else {
-        const data = await res.json();
+        const data = await response.json();
         alert(data.error || "Une erreur est survenue lors de l'envoi de la demande.");
       }
-    } catch (err) {
-      console.error(err);
-      alert("Erreur de connexion au serveur.");
+    } catch (error) {
+      console.error(error);
+      alert('Erreur de connexion au serveur.');
     } finally {
       setLoading(false);
     }
   };
 
-  const selectedDuration = durations.find(d => d.months === duration);
+  const statusDetails = (status: string) => {
+    if (status === 'approved') {
+      return {
+        label: 'Approuvé',
+        icon: CheckCircle2,
+        className: 'bg-blue-50 text-blue-700',
+      };
+    }
+    if (status === 'rejected') {
+      return {
+        label: 'Rejeté',
+        icon: AlertCircle,
+        className: 'bg-red-50 text-red-700',
+      };
+    }
+    return {
+      label: 'En attente',
+      icon: Clock,
+      className: 'bg-amber-50 text-amber-700',
+    };
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10">
-      <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800 mb-4">ShopMaster Pro Premium</h2>
-        <p className="text-slate-500 max-w-lg mx-auto">
-          Débloquez toute la puissance de l'IA et gérez votre boutique comme un professionnel.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Free Plan */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col">
-          <div className="mb-6">
-            <h3 className="text-xl font-bold text-slate-800">Version Gratuite</h3>
-            <p className="text-slate-400 text-sm">Pour débuter</p>
+    <div className="mx-auto max-w-5xl space-y-5 pb-6">
+      <motion.header
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+      >
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#044598]">
+            <Sparkles size={14} />
+            OFFRES MACAISSE
           </div>
-          <div className="text-3xl font-bold text-slate-800 mb-8">0 CFA <span className="text-sm font-normal text-slate-400">/ mois</span></div>
-          
-          <ul className="space-y-4 mb-10 flex-1">
-            <li className="flex items-center gap-3 text-slate-600">
-              <CheckCircle2 size={18} className="text-emerald-500" />
-              <span>Jusqu'à 50 produits</span>
-            </li>
-            <li className="flex items-center gap-3 text-slate-600">
-              <CheckCircle2 size={18} className="text-emerald-500" />
-              <span>Ventes basiques</span>
-            </li>
-            <li className="flex items-center gap-3 text-slate-400 line-through">
-              <X size={18} />
-              <span>Analyses IA avancées</span>
-            </li>
-            <li className="flex items-center gap-3 text-slate-400 line-through">
-              <X size={18} />
-              <span>Multi-utilisateurs</span>
-            </li>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+            Choisissez votre formule
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Des outils simples pour mieux gérer votre boutique.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-sm">
+          Votre formule actuelle :{' '}
+          <strong className="text-slate-900">
+            {user.plan === 'premium' ? 'Premium' : 'Gratuite'}
+          </strong>
+        </div>
+      </motion.header>
+
+      <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+        >
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-slate-500">Pour commencer</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Formule gratuite</h2>
+          </div>
+
+          <p className="mb-5 text-3xl font-extrabold text-slate-900">
+            0 <span className="text-base font-semibold text-slate-500">FCFA / mois</span>
+          </p>
+
+          <ul className="mb-5 grid gap-3 text-sm text-slate-600">
+            {['Jusqu’à 50 produits', 'Ventes basiques'].map((feature) => (
+              <li key={feature} className="flex items-center gap-2.5">
+                <Check size={17} className="shrink-0 text-[#044598]" />
+                {feature}
+              </li>
+            ))}
+            {['Analyses IA avancées', 'Multi-utilisateurs'].map((feature) => (
+              <li key={feature} className="flex items-center gap-2.5 text-slate-400">
+                <X size={16} className="shrink-0" />
+                {feature}
+              </li>
+            ))}
           </ul>
 
-          <button disabled className="w-full py-3 rounded-xl border border-slate-200 text-slate-400 font-bold">
-            {user.plan === 'free' ? 'Plan actuel' : 'Inclus'}
+          <button
+            disabled
+            className="mt-auto w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-500"
+          >
+            {user.plan === 'free' ? 'Votre formule actuelle' : 'Formule incluse'}
           </button>
-        </div>
+        </motion.section>
 
-        {/* Premium Plan */}
-        <div className="bg-slate-900 p-8 rounded-3xl border border-emerald-500/30 shadow-2xl shadow-emerald-900/20 flex flex-col relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold px-4 py-1 rounded-bl-xl uppercase tracking-widest">
-            Recommandé
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+          className="relative flex flex-col overflow-hidden rounded-2xl bg-[#08264d] p-5 text-white shadow-lg sm:p-6"
+        >
+          <div className="pointer-events-none absolute -right-12 -top-14 h-44 w-44 rounded-full bg-blue-400/15 blur-3xl" />
+
+          <div className="relative flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-blue-200">Pour aller plus loin</p>
+              <h2 className="mt-1 text-xl font-bold">MaCaisse Premium</h2>
+            </div>
+            <span className="rounded-full bg-amber-400 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-950">
+              Recommandé
+            </span>
           </div>
-          
-          <div className="mb-6">
-            <h3 className="text-xl font-bold text-white">Version Premium</h3>
-            <p className="text-slate-400 text-sm">Pour les boutiques ambitieuses</p>
+
+          <div className="relative mt-5 flex flex-wrap items-end gap-x-2 gap-y-1">
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={selectedDuration.price}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="text-3xl font-extrabold"
+              >
+                {formatPrice(selectedDuration.price)}
+              </motion.p>
+            </AnimatePresence>
+            <span className="pb-1 text-sm text-blue-200">
+              FCFA / {selectedDuration.label}
+            </span>
           </div>
-          <div className="text-3xl font-bold text-white mb-8">
-            {selectedDuration?.price.toLocaleString()} CFA 
-            <span className="text-sm font-normal text-slate-400"> / {selectedDuration?.label}</span>
-          </div>
-          
-          <div className="mb-8 space-y-3">
-            <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Choisir la durée</p>
-            <div className="grid grid-cols-2 gap-2">
-              {durations.map((d) => (
-                <button
-                  key={d.months}
-                  onClick={() => setDuration(d.months as any)}
-                  className={cn(
-                    "px-3 py-2 rounded-xl text-xs font-bold transition-all border",
-                    duration === d.months 
-                      ? "bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/50" 
-                      : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
-                  )}
-                >
-                  {d.label}
-                  {d.discount && <span className="ml-1 text-[8px] bg-amber-500 text-white px-1 rounded">-{d.discount}</span>}
-                </button>
-              ))}
+
+          <div className="relative mt-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-blue-200">
+              Durée de l’abonnement
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {durations.map((item) => {
+                const isSelected = duration === item.months;
+                return (
+                  <button
+                    key={item.months}
+                    type="button"
+                    onClick={() => setDuration(item.months)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      'rounded-xl border px-3 py-2 text-left transition-all duration-200 hover:-translate-y-0.5',
+                      isSelected
+                        ? 'border-amber-300 bg-amber-400 text-slate-950 shadow-md'
+                        : 'border-white/15 bg-white/5 text-white hover:bg-white/10',
+                    )}
+                  >
+                    <span className="block text-sm font-bold">{item.label}</span>
+                    {item.saving && (
+                      <span
+                        className={cn(
+                          'mt-0.5 block text-[10px] font-semibold',
+                          isSelected ? 'text-slate-800' : 'text-blue-200',
+                        )}
+                      >
+                        {item.saving}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          
-          <ul className="space-y-4 mb-10 flex-1">
-            <li className="flex items-center gap-3 text-slate-300">
-              <Zap size={18} className="text-emerald-400" />
-              <span>Produits illimités</span>
-            </li>
-            <li className="flex items-center gap-3 text-slate-300">
-              <BrainCircuit size={18} className="text-emerald-400" />
-              <span>Analyses IA illimitées</span>
-            </li>
-            <li className="flex items-center gap-3 text-slate-300">
-              <ShieldCheck size={18} className="text-emerald-400" />
-              <span>Sauvegarde automatique</span>
-            </li>
-            <li className="flex items-center gap-3 text-slate-300">
-              <BarChart3 size={18} className="text-emerald-400" />
-              <span>Rapports PDF personnalisés</span>
-            </li>
+
+          <ul className="relative mt-5 grid gap-3 text-sm text-blue-50 sm:grid-cols-2">
+            {[
+              { icon: Zap, label: 'Produits illimités' },
+              { icon: BrainCircuit, label: 'Analyses IA illimitées' },
+              { icon: ShieldCheck, label: 'Sauvegarde automatique' },
+              { icon: BarChart3, label: 'Rapports PDF personnalisés' },
+            ].map(({ icon: Icon, label }) => (
+              <li key={label} className="flex items-center gap-2">
+                <Icon size={16} className="shrink-0 text-amber-400" />
+                {label}
+              </li>
+            ))}
           </ul>
 
-          {user.plan === 'premium' ? (
-            <div className="space-y-4">
-              <button disabled className="w-full py-3 rounded-xl border border-emerald-500/30 text-emerald-400 font-bold">
-                Plan actuel
-              </button>
-              <div className="p-4 bg-emerald-900/20 rounded-2xl border border-emerald-500/20 text-center">
-                <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Temps restant</p>
-                <SubscriptionTimer className="inline-flex" />
+          <div className="relative mt-5">
+            {user.plan === 'premium' ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-white/15 px-4 py-2.5 text-center text-sm font-bold text-blue-100">
+                  Votre formule actuelle
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-white/10 px-4 py-3">
+                  <span className="text-xs font-semibold text-blue-100">Temps restant</span>
+                  <SubscriptionTimer className="inline-flex" />
+                </div>
               </div>
-            </div>
-          ) : (
-            <button 
-              onClick={() => setShowPaymentModal(true)}
-              className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/50"
-            >
-              Passer au Premium
-            </button>
-          )}
-        </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(true)}
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-amber-300"
+              >
+                Passer au Premium
+                <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
+              </button>
+            )}
+          </div>
+        </motion.section>
       </div>
 
       {requests.length > 0 && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="font-bold text-slate-800">Historique des demandes</h3>
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+        >
+          <div className="border-b border-slate-100 px-5 py-3">
+            <h2 className="font-bold text-slate-900">Historique des demandes</h2>
           </div>
+
           <div className="divide-y divide-slate-100">
-            {requests.map(req => (
-              <div key={req.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-slate-800 uppercase text-sm">{req.payment_method}</p>
-                  <p className="text-xs text-slate-500">{new Date(req.created_at).toLocaleDateString()}</p>
+            {requests.map((request) => {
+              const status = statusDetails(request.status);
+              const StatusIcon = status.icon;
+
+              return (
+                <div
+                  key={request.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-bold capitalize text-slate-800">
+                      {request.payment_method}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {new Date(request.created_at).toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold',
+                      status.className,
+                    )}
+                  >
+                    <StatusIcon size={13} />
+                    {status.label}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  {req.status === 'pending' && (
-                    <span className="flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">
-                      <Clock size={12} />
-                      En attente
-                    </span>
-                  )}
-                  {req.status === 'approved' && (
-                    <span className="flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">
-                      <CheckCircle2 size={12} />
-                      Approuvé
-                    </span>
-                  )}
-                  {req.status === 'rejected' && (
-                    <span className="flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold">
-                      <AlertCircle size={12} />
-                      Rejeté
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        </motion.section>
       )}
 
-      {/* Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)}></div>
-          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-slate-800">Paiement Manuel</h3>
-              <button onClick={() => setShowPaymentModal(false)} className="p-2 text-slate-400 hover:text-slate-600">
-                <X size={24} />
-              </button>
-            </div>
+      <AnimatePresence>
+        {showPaymentModal && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              aria-label="Fermer la fenêtre de paiement"
+              className="absolute inset-0 cursor-default bg-slate-950/60 backdrop-blur-sm"
+              onClick={() => setShowPaymentModal(false)}
+            />
 
-            <div className="space-y-6">
-              <div className="grid grid-cols-3 gap-2">
-                <button 
-                  onClick={() => setPaymentMethod('wave')}
-                  className={cn(
-                    "p-3 rounded-2xl border flex flex-col items-center gap-2 transition-all",
-                    paymentMethod === 'wave' ? "border-blue-500 bg-blue-50" : "border-slate-100"
-                  )}
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="payment-title"
+              initial={{ opacity: 0, y: 18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#044598]">
+                    MaCaisse Premium
+                  </p>
+                  <h2 id="payment-title" className="mt-1 text-xl font-extrabold text-slate-900">
+                    Finaliser le paiement
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  aria-label="Fermer"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                 >
-                  <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-inner">W</div>
-                  <span className="text-[10px] font-bold text-slate-700">Wave</span>
-                </button>
-                <button 
-                  onClick={() => setPaymentMethod('orange')}
-                  className={cn(
-                    "p-3 rounded-2xl border flex flex-col items-center gap-2 transition-all",
-                    paymentMethod === 'orange' ? "border-orange-500 bg-orange-50" : "border-slate-100"
-                  )}
-                >
-                  <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-inner">OM</div>
-                  <span className="text-[10px] font-bold text-slate-700">Orange Money</span>
-                </button>
-                <button 
-                  onClick={() => setPaymentMethod('card')}
-                  className={cn(
-                    "p-3 rounded-2xl border flex flex-col items-center gap-2 transition-all",
-                    paymentMethod === 'card' ? "border-emerald-500 bg-emerald-50" : "border-slate-100"
-                  )}
-                >
-                  <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-inner">CB</div>
-                  <span className="text-[10px] font-bold text-slate-700">Carte Bancaire</span>
+                  <X size={20} />
                 </button>
               </div>
 
-                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Récapitulatif</p>
-                    <p className="text-sm font-bold text-emerald-600">{selectedDuration?.price.toLocaleString()} CFA</p>
-                  </div>
-                  <p className="text-xs text-slate-500 mb-3 uppercase font-bold tracking-wider">Instructions de paiement</p>
-                
-                {paymentMethod === 'wave' && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-800">
-                      Ouvrez votre application <strong>Wave</strong> et envoyez le montant exact au numéro ci-dessous :
-                    </p>
-                    <div className="bg-white p-4 rounded-xl border border-blue-100 text-center shadow-sm">
-                      <p className="text-2xl font-bold text-blue-600 tracking-tighter">78 307 01 14</p>
-                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-medium">Marchand: ShopMaster Pro SN</p>
-                    </div>
-                  </div>
-                )}
+              <div className="mb-4 grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: 'wave', label: 'Wave', mark: 'W', color: 'blue' },
+                    { id: 'orange', label: 'Orange Money', mark: 'OM', color: 'orange' },
+                    { id: 'card', label: 'Carte bancaire', mark: 'CB', color: 'slate' },
+                  ] as const
+                ).map((method) => {
+                  const active = paymentMethod === method.id;
+                  const colorClass =
+                    method.color === 'blue'
+                      ? 'bg-blue-500'
+                      : method.color === 'orange'
+                        ? 'bg-orange-500'
+                        : 'bg-[#044598]';
+                  const selectedClass =
+                    method.color === 'blue'
+                      ? 'border-blue-400 bg-blue-50'
+                      : method.color === 'orange'
+                        ? 'border-orange-400 bg-orange-50'
+                        : 'border-[#044598] bg-blue-50';
 
-                {paymentMethod === 'orange' && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-800">
-                      Composez le <strong>#144#</strong> ou utilisez l'application <strong>Orange Money</strong> :
-                    </p>
-                    <div className="bg-white p-4 rounded-xl border border-orange-100 text-center shadow-sm">
-                      <p className="text-2xl font-bold text-orange-600 tracking-tighter">78 307 01 14</p>
-                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-medium">Code Marchand: 123456</p>
-                    </div>
-                  </div>
-                )}
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      onClick={() => setPaymentMethod(method.id)}
+                      aria-pressed={active}
+                      className={cn(
+                        'flex flex-col items-center gap-2 rounded-xl border p-3 transition hover:-translate-y-0.5',
+                        active ? selectedClass : 'border-slate-200 hover:bg-slate-50',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-9 w-9 items-center justify-center rounded-full text-sm font-extrabold text-white',
+                          colorClass,
+                        )}
+                      >
+                        {method.mark}
+                      </span>
+                      <span className="text-center text-[10px] font-bold text-slate-700">
+                        {method.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-                {paymentMethod === 'card' && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-800">
-                      Pour le paiement par <strong>Carte Bancaire</strong>, veuillez effectuer un virement ou dépôt :
-                    </p>
-                    <div className="bg-white p-4 rounded-xl border border-emerald-100 text-center shadow-sm">
-                      <p className="text-sm font-bold text-slate-800">SN012 01234 0123456789 01</p>
-                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-medium">Banque: CBAO Groupe Attijariwafa Bank</p>
-                    </div>
-                  </div>
-                )}
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-sm text-slate-600">
+                    Abonnement de {selectedDuration.label}
+                  </span>
+                  <strong className="text-[#044598]">
+                    {formatPrice(selectedDuration.price)} FCFA
+                  </strong>
+                </div>
 
-                <p className="text-[10px] text-slate-500 italic mt-4 bg-white/50 p-2 rounded-lg border border-slate-100">
-                  * Une fois le paiement effectué, veuillez saisir la référence de transaction reçue par SMS pour confirmation.
+                <div className="border-t border-slate-200 pt-3">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Instructions de paiement
+                  </p>
+
+                  {paymentMethod === 'wave' && (
+                    <div className="rounded-lg border border-blue-100 bg-white p-3">
+                      <p className="text-sm text-slate-700">
+                        Envoyez le montant exact depuis votre application Wave :
+                      </p>
+                      <p className="mt-2 text-xl font-extrabold text-blue-600">78 307 01 14</p>
+                      <p className="text-[10px] text-slate-500">
+                        Marchand : MaCaisse
+                      </p>
+                    </div>
+                  )}
+
+                  {paymentMethod === 'orange' && (
+                    <div className="rounded-lg border border-orange-100 bg-white p-3">
+                      <p className="text-sm text-slate-700">
+                        Composez <strong>#144#</strong> ou utilisez l’application Orange Money :
+                      </p>
+                      <p className="mt-2 text-xl font-extrabold text-orange-600">78 307 01 14</p>
+                      <p className="text-[10px] text-slate-500">
+                        Code marchand : 123456
+                      </p>
+                    </div>
+                  )}
+
+                  {paymentMethod === 'card' && (
+                    <div className="rounded-lg border border-blue-100 bg-white p-3">
+                      <p className="text-sm text-slate-700">
+                        Effectuez un virement ou dépôt bancaire :
+                      </p>
+                      <p className="mt-2 break-all text-sm font-extrabold text-slate-800">
+                        SN012 01234 0123456789 01
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Banque : CBAO Groupe Attijariwafa Bank
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                  Après le paiement, indiquez la référence de transaction reçue pour
+                  permettre la vérification.
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Votre numéro de téléphone</label>
-                  <input 
-                    type="tel" 
-                    placeholder="78 000 00 00"
-                    className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Référence de transaction (ID)</label>
-                  <input 
-                    type="text" 
-                    placeholder="Ex: TR-123456789"
-                    className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:border-emerald-500"
-                    value={transactionRef}
-                    onChange={(e) => setTransactionRef(e.target.value)}
-                  />
-                </div>
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-semibold text-slate-700">
+                  Numéro de téléphone
+                  <span className="relative mt-1.5 block">
+                    <Smartphone
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      type="tel"
+                      autoComplete="tel"
+                      placeholder="78 000 00 00"
+                      className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-[#044598] focus:ring-2 focus:ring-blue-100"
+                      value={phoneNumber}
+                      onChange={(event) => setPhoneNumber(event.target.value)}
+                    />
+                  </span>
+                </label>
+
+                <label className="text-sm font-semibold text-slate-700">
+                  Référence de transaction
+                  <span className="relative mt-1.5 block">
+                    <CreditCard
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Ex. TR-123456789"
+                      className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-[#044598] focus:ring-2 focus:ring-blue-100"
+                      value={transactionRef}
+                      onChange={(event) => setTransactionRef(event.target.value)}
+                    />
+                  </span>
+                </label>
               </div>
 
-              <button 
-                onClick={handleRequest}
-                disabled={loading || !phoneNumber || !transactionRef}
-                className="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              <button
+                type="button"
+                onClick={() => void handleRequest()}
+                disabled={loading || !phoneNumber.trim() || !transactionRef.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#044598] px-4 py-3 font-bold text-white transition hover:bg-[#033875] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? <Loader2 className="animate-spin" /> : "Envoyer ma demande"}
+                {loading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Envoi en cours…
+                  </>
+                ) : (
+                  'Envoyer ma demande'
+                )}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

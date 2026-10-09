@@ -1,511 +1,692 @@
-import React from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  ShoppingCart, 
-  Package, 
-  BrainCircuit, 
-  Zap, 
-  ShieldCheck, 
-  Smartphone, 
-  BarChart3, 
+import {
+  ArrowRight,
+  BarChart3,
+  Check,
+  ChevronDown,
+  Cloud,
+  Menu,
+  Package,
+  ShieldCheck,
+  ShoppingCart,
+  Smartphone,
+  Sparkles,
   Users,
-  ChevronRight,
-  Store,
-  CheckCircle2,
-  Globe,
-  WifiOff
+  WifiOff,
+  X,
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import {
+  AnimatePresence,
+  motion,
+  MotionConfig,
+  useReducedMotion,
+} from 'motion/react';
 
-const FeatureCard = ({ icon: Icon, title, description, delay }: { icon: any, title: string, description: string, delay: number }) => (
-  <motion.div 
-    initial={{ opacity: 0, y: 20 }}
-    whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true }}
-    transition={{ delay, duration: 0.5 }}
-    className="p-8 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition-all group"
-  >
-    <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-6 group-hover:scale-110 transition-transform">
-      <Icon size={28} />
-    </div>
-    <h3 className="text-xl font-bold text-slate-900 mb-3">{title}</h3>
-    <p className="text-slate-600 leading-relaxed">{description}</p>
-  </motion.div>
-);
+const demoItems = [
+  { name: 'Lait en poudre', quantity: 2, price: 2400 },
+  { name: 'Pain baguette', quantity: 3, price: 450 },
+  { name: 'Café Touba', quantity: 1, price: 1300 },
+];
 
-const AnimatedStock = () => (
-  <div className="relative w-full h-full min-h-[400px] bg-slate-50 rounded-3xl overflow-hidden flex items-center justify-center border border-slate-100 shadow-inner">
-    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-500/5 via-transparent to-transparent"></div>
-    <div className="grid grid-cols-3 gap-4 p-8 w-full max-w-md">
-      {[1, 2, 3, 4, 5, 6].map((i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ 
-            delay: i * 0.1, 
-            duration: 0.5,
-            repeat: Infinity,
-            repeatType: "reverse",
-            repeatDelay: 2
-          }}
-          className="aspect-square bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-2 group hover:border-emerald-200 transition-colors"
-        >
-          <Package className="text-emerald-500" size={24} />
-          <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-            <motion.div 
-              animate={{ width: ["20%", "80%", "40%", "90%"] }}
-              transition={{ duration: 4, repeat: Infinity }}
-              className="h-full bg-emerald-500"
-            />
-          </div>
-        </motion.div>
-      ))}
-    </div>
-    
-    {/* Floating Elements */}
-    <motion.div 
-      animate={{ y: [0, -20, 0], x: [0, 10, 0] }}
-      transition={{ duration: 5, repeat: Infinity }}
-      className="absolute top-10 right-10 p-4 bg-white rounded-2xl shadow-xl border border-slate-100 flex items-center gap-3"
-    >
-      <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
-        <Zap size={20} />
-      </div>
-      <div>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alerte Stock</p>
-        <p className="text-sm font-bold text-slate-900">Sucre: 5kg restant</p>
-      </div>
-    </motion.div>
+const features = [
+  {
+    icon: ShoppingCart,
+    title: 'Encaissez simplement',
+    description:
+      'Enregistrez vos ventes rapidement et retrouvez le détail de vos opérations.',
+  },
+  {
+    icon: Package,
+    title: 'Suivez votre stock',
+    description:
+      'Consultez vos produits et repérez plus facilement ceux à renouveler.',
+  },
+  {
+    icon: BarChart3,
+    title: 'Suivez votre activité',
+    description:
+      'Retrouvez vos ventes et vos rapports pour mieux comprendre votre commerce.',
+  },
+  {
+    icon: WifiOff,
+    title: 'Continuez hors ligne',
+    description:
+      'Gardez votre caisse à portée de main, même si la connexion est indisponible.',
+  },
+];
 
-    <motion.div 
-      animate={{ y: [0, 20, 0], x: [0, -10, 0] }}
-      transition={{ duration: 6, repeat: Infinity, delay: 1 }}
-      className="absolute bottom-10 left-10 p-4 bg-white rounded-2xl shadow-xl border border-slate-100 flex items-center gap-3"
-    >
-      <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
-        <ShoppingCart size={20} />
-      </div>
-      <div>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vente Récente</p>
-        <p className="text-sm font-bold text-slate-900">+12,500 FCFA</p>
-      </div>
-    </motion.div>
-  </div>
-);
+const steps = [
+  {
+    number: '01',
+    title: 'Créez votre boutique',
+    description: 'Inscrivez-vous et ajoutez les informations de votre commerce.',
+  },
+  {
+    number: '02',
+    title: 'Ajoutez vos produits',
+    description: 'Renseignez les produits, les prix et les quantités disponibles.',
+  },
+  {
+    number: '03',
+    title: 'Commencez à vendre',
+    description: 'Encaissez vos clients et suivez votre activité au même endroit.',
+  },
+];
 
-const AnimatedPOS = () => (
-  <div className="relative w-full aspect-[3/4] bg-slate-900 rounded-[2.5rem] p-6 shadow-2xl border-8 border-slate-800 overflow-hidden">
-    <div className="h-full flex flex-col">
-      {/* POS Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white">
-            <Store size={16} />
-          </div>
-          <span className="text-xs font-bold text-white">Caisse 01</span>
-        </div>
-        <div className="flex gap-1">
-          <div className="w-2 h-2 rounded-full bg-red-500"></div>
-          <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-        </div>
-      </div>
+const durations = [
+  { label: '3 mois', price: '27 000', saving: 'Économie : 3 000 FCFA' },
+  { label: '6 mois', price: '50 000', saving: 'Économie : 10 000 FCFA' },
+  { label: '1 an', price: '90 000', saving: 'Économie : 30 000 FCFA' },
+];
 
-      {/* POS Items List */}
-      <div className="flex-1 space-y-3">
-        {[
-          { name: "Lait Bonnet Rouge", qty: 2, price: "1,200" },
-          { name: "Pain Baguette", qty: 3, price: "450" },
-          { name: "Café Touba", qty: 1, price: "2,500" }
-        ].map((item, i) => (
-          <motion.div
-            key={i}
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: i * 0.2 }}
-            className="p-3 bg-white/5 rounded-xl flex items-center justify-between border border-white/10"
-          >
-            <div>
-              <p className="text-xs font-bold text-white">{item.name}</p>
-              <p className="text-[10px] text-slate-400">x{item.qty}</p>
-            </div>
-            <p className="text-xs font-bold text-emerald-400">{item.price} F</p>
-          </motion.div>
-        ))}
-      </div>
+const questions = [
+  {
+    question: 'Puis-je commencer gratuitement ?',
+    answer:
+      'Oui. Le plan Gratuit est à 0 FCFA et permet de démarrer avec jusqu’à 50 produits et les ventes de base.',
+  },
+  {
+    question: 'Que comprend le plan Premium ?',
+    answer:
+      'L’offre Premium comprend notamment les produits illimités, les analyses IA, la sauvegarde automatique et les rapports PDF.',
+  },
+  {
+    question: 'Puis-je utiliser MaCaisse sur mon téléphone ?',
+    answer:
+      'Oui. MaCaisse est conçue pour être utilisée sur téléphone comme sur ordinateur.',
+  },
+  {
+    question: 'Comment choisir une durée Premium ?',
+    answer:
+      'Créez votre compte, puis choisissez la durée souhaitée depuis votre espace.',
+  },
+];
 
-      {/* POS Total */}
-      <div className="mt-6 pt-6 border-t border-white/10">
-        <div className="flex justify-between mb-4">
-          <span className="text-slate-400 text-sm">Total</span>
-          <span className="text-xl font-black text-white">4,150 FCFA</span>
-        </div>
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-colors"
-        >
-          Encaisser
-        </motion.button>
-      </div>
-    </div>
-
-    {/* AI Badge */}
+function Reveal({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
     <motion.div
-      animate={{ scale: [1, 1.1, 1] }}
-      transition={{ duration: 2, repeat: Infinity }}
-      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-4 bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/30 rounded-full"
+      className={className}
+      initial={{ opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.45, ease: 'easeOut' }}
     >
-      <BrainCircuit className="text-emerald-400" size={40} />
+      {children}
     </motion.div>
-  </div>
-);
+  );
+}
+
+function Logo() {
+  return (
+    <Link
+      to="/"
+      aria-label="MaCaisse, accueil"
+      className="flex shrink-0 items-center gap-2"
+    >
+      <img src="/logo.png" alt="" className="h-9 w-9 object-contain sm:h-10 sm:w-10" />
+      <span className="text-xl font-extrabold tracking-tight text-slate-900">
+        <span className="text-brand-600">Ma</span>Caisse
+      </span>
+    </Link>
+  );
+}
+
+function CaisseDemo() {
+  const prefersReducedMotion = useReducedMotion();
+  const [step, setStep] = useState(prefersReducedMotion ? 5 : 0);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setStep(5);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setStep((current) => (current + 1) % 7);
+    }, 1400);
+
+    return () => window.clearInterval(timer);
+  }, [prefersReducedMotion]);
+
+  const itemCount = Math.min(step, demoItems.length);
+  const visibleItems = demoItems.slice(0, itemCount);
+  const total = visibleItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0,
+  );
+  const saleComplete = step === 5 || step === 6;
+
+  return (
+    <div className="relative mx-auto w-full max-w-lg">
+      <div className="absolute -inset-5 rounded-[2.5rem] bg-brand-100/80 blur-2xl" />
+
+      <div className="relative rounded-[1.75rem] border border-slate-200 bg-white p-3 shadow-2xl shadow-brand-900/10 sm:p-5">
+        <div className="flex items-center justify-between rounded-t-2xl bg-brand-600 px-4 py-4 text-white sm:px-5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
+              <ShoppingCart size={19} />
+            </span>
+            <span>
+              <span className="block font-bold">Caisse</span>
+              <span className="block text-xs text-brand-100">Nouvelle vente</span>
+            </span>
+          </div>
+          <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
+            {itemCount} article{itemCount > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div className="min-h-56 space-y-2.5 p-3 sm:p-4">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {visibleItems.map((item) => (
+              <motion.div
+                key={item.name}
+                initial={{ opacity: 0, x: -14, height: 0 }}
+                animate={{ opacity: 1, x: 0, height: 'auto' }}
+                exit={{ opacity: 0, x: 12, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="flex items-center justify-between gap-3 overflow-hidden rounded-xl border border-slate-100 px-3 py-3"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                    <Package size={17} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-bold text-slate-800">
+                      {item.name}
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      Quantité : {item.quantity}
+                    </span>
+                  </span>
+                </div>
+                <span className="whitespace-nowrap text-sm font-bold text-slate-900">
+                  {(item.price * item.quantity).toLocaleString('fr-FR')} FCFA
+                </span>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {itemCount === 0 && (
+            <div className="flex min-h-48 flex-col items-center justify-center text-center text-slate-400">
+              <ShoppingCart size={28} strokeWidth={1.5} />
+              <p className="mt-3 text-sm">Votre vente apparaîtra ici</p>
+            </div>
+          )}
+
+          {itemCount > 0 && itemCount < 3 && (
+            <motion.p
+              key={itemCount}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="px-2 py-1 text-center text-xs text-slate-400"
+            >
+              Ajout d’un produit à la vente…
+            </motion.p>
+          )}
+        </div>
+
+        <div className="rounded-2xl bg-slate-50 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-500">Total de la vente</span>
+            <motion.span
+              key={total}
+              initial={{ opacity: 0.4, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-xl font-extrabold text-slate-950"
+            >
+              {total.toLocaleString('fr-FR')} FCFA
+            </motion.span>
+          </div>
+
+          <motion.div
+            animate={{ scale: saleComplete ? 1 : 0.99 }}
+            className={`mt-3 flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-bold transition-colors ${
+              saleComplete
+                ? 'bg-emerald-600 text-white'
+                : 'bg-accent-500 text-slate-950'
+            }`}
+          >
+            {saleComplete ? (
+              <>
+                <Check size={18} />
+                Vente enregistrée
+              </>
+            ) : (
+              <>
+                Encaisser
+                <ArrowRight size={17} />
+              </>
+            )}
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="absolute -bottom-5 -left-3 hidden items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl sm:flex">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+          <Sparkles size={19} />
+        </span>
+        <span>
+          <span className="block text-sm font-bold text-slate-900">Démo illustrative</span>
+          <span className="block text-xs text-slate-500">Exemple de vente</span>
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function Landing() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [menuOpen]);
+
+  const closeMenu = () => setMenuOpen(false);
+
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50">
-              <Store size={22} strokeWidth={2.5} />
-            </div>
-            <span className="text-xl font-bold text-slate-900 tracking-tight">ShopMaster Pro</span>
-          </div>
-          <div className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Fonctionnalités</a>
-            <a href="#pricing" className="text-sm font-medium text-slate-600 hover:text-emerald-600 transition-colors">Tarifs</a>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link to="/login" className="text-sm font-bold text-slate-600 hover:text-emerald-600 px-4 py-2 transition-colors">Connexion</Link>
-            <Link to="/register" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5">
-              Essai Gratuit
-            </Link>
-          </div>
-        </div>
-      </nav>
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-screen overflow-x-hidden bg-white text-slate-900">
+        <style>{`
+          @keyframes landing-marquee {
+            from { transform: translateX(0); }
+            to { transform: translateX(-50%); }
+          }
+          .landing-marquee-track {
+            animation: landing-marquee 32s linear infinite;
+          }
+          .landing-marquee:hover .landing-marquee-track,
+          .landing-marquee:focus-within .landing-marquee-track {
+            animation-play-state: paused;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .landing-marquee-track {
+              animation: none;
+            }
+          }
+        `}</style>
 
-      {/* Hero Section */}
-      <section className="pt-40 pb-20 px-6 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-emerald-500/5 blur-[120px] rounded-full -z-10"></div>
-        <div className="max-w-7xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold uppercase tracking-widest mb-8 border border-emerald-100">
-              <Zap size={14} className="fill-emerald-600" />
-              Le futur de la gestion commerciale
-            </span>
-            <h1 className="text-5xl md:text-7xl font-black text-slate-900 mb-8 tracking-tight leading-[1.1]">
-              Propulsez votre commerce <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">vers le succès.</span>
-            </h1>
-            <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-12 leading-relaxed">
-              La solution de gestion intelligente conçue pour les entrepreneurs africains. POS, Stocks, IA et Cloud réunis dans une seule application.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/register" className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-10 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-emerald-200 transition-all hover:-translate-y-1 flex items-center justify-center gap-2">
-                Commencer maintenant
-                <ChevronRight size={20} />
+        <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-100 bg-white/95 backdrop-blur">
+          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-4 sm:h-20 sm:px-6">
+            <Logo />
+
+            <nav className="hidden items-center gap-1 md:flex" aria-label="Navigation principale">
+              <a href="#avantages" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
+                Avantages
+              </a>
+              <a href="#fonctionnement" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
+                Fonctionnement
+              </a>
+              <a href="#tarifs" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
+                Tarifs
+              </a>
+              <Link to="/login" className="ml-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:text-brand-700">
+                Connexion
               </Link>
-              <Link to="/login" className="w-full sm:w-auto bg-white text-slate-900 border border-slate-200 px-10 py-4 rounded-2xl font-bold text-lg hover:bg-slate-50 transition-all flex items-center justify-center gap-2">
-                Voir la démo
+              <Link to="/register" className="ml-1 rounded-xl bg-brand-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-brand-700">
+                Créer ma boutique
               </Link>
-            </div>
-          </motion.div>
+            </nav>
 
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3, duration: 0.8 }}
-            className="mt-20 relative max-w-5xl mx-auto"
-          >
-            <div className="absolute -inset-4 bg-gradient-to-b from-emerald-500/20 to-transparent blur-3xl -z-10"></div>
-            <AnimatedStock />
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="py-20 bg-slate-50 transition-colors">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { label: "Utilisateurs", value: "10k+" },
-              { label: "Transactions", value: "2M+" },
-              { label: "Pays", value: "15+" },
-              { label: "Disponibilité", value: "99.9%" }
-            ].map((stat, i) => (
-              <div key={i} className="text-center">
-                <p className="text-3xl md:text-4xl font-black text-emerald-600 mb-2">{stat.value}</p>
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="py-32 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-20">
-            <h2 className="text-3xl md:text-5xl font-black text-slate-900 mb-6 tracking-tight">
-              Tout ce dont vous avez besoin pour réussir.
-            </h2>
-            <p className="text-lg text-slate-600">
-              Une suite complète d'outils conçus pour simplifier votre quotidien et booster votre croissance.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-8">
-            <FeatureCard 
-              icon={ShoppingCart}
-              title="Vente Rapide (POS)"
-              description="Interface tactile optimisée. Encaissez en quelques secondes, gérez les remises et les modes de paiement (Cash, Mobile Money)."
-              delay={0.1}
-            />
-            <FeatureCard 
-              icon={Package}
-              title="Stocks & Inventaire"
-              description="Suivi précis des quantités. Alertes automatiques de rupture et historique complet des mouvements de stock."
-              delay={0.2}
-            />
-            <FeatureCard 
-              icon={BarChart3}
-              title="Rapports de Ventes"
-              description="Visualisez vos bénéfices réels. Rapports journaliers, hebdomadaires et mensuels exportables en PDF."
-              delay={0.3}
-            />
-            <FeatureCard 
-              icon={BrainCircuit}
-              title="IA & Prédictions"
-              description="L'intelligence artificielle analyse vos données pour vous dire quoi commander et quand, selon les tendances."
-              delay={0.4}
-            />
-            <FeatureCard 
-              icon={Globe}
-              title="Multi-boutiques"
-              description="Gérez plusieurs points de vente depuis un seul compte. Centralisez vos stocks et comparez les performances."
-              delay={0.5}
-            />
-            <FeatureCard 
-              icon={Smartphone}
-              title="Reçus Numériques"
-              description="Générez des reçus professionnels et partagez-les instantanément avec vos clients. Économisez sur le papier et modernisez votre image."
-              delay={0.6}
-            />
-            <FeatureCard 
-              icon={WifiOff}
-              title="Mode Hors-ligne"
-              description="Pas d'internet ? Pas de problème. Vendez normalement, vos données se synchronisent dès que vous êtes connecté."
-              delay={0.7}
-            />
-            <FeatureCard 
-              icon={ShieldCheck}
-              title="Cloud Sécurisé"
-              description="Vos données sont protégées et sauvegardées automatiquement. Accédez à votre boutique depuis n'importe quel appareil."
-              delay={0.8}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* How it Works Section */}
-      <section className="py-32 px-6 bg-emerald-600 text-white overflow-hidden relative transition-colors">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 blur-[100px] rounded-full"></div>
-        <div className="max-w-7xl mx-auto relative z-10">
-          <div className="grid md:grid-cols-2 gap-20 items-center">
-            <div>
-              <h2 className="text-4xl md:text-5xl font-black mb-8 tracking-tight">Simple comme bonjour.</h2>
-              <div className="space-y-12">
-                {[
-                  { step: "01", title: "Créez votre compte", desc: "Inscrivez votre boutique en moins de 2 minutes et configurez vos paramètres de base." },
-                  { step: "02", title: "Ajoutez vos produits", desc: "Importez votre inventaire ou ajoutez vos articles manuellement avec leurs prix et stocks." },
-                  { step: "03", title: "Commencez à vendre", desc: "Utilisez l'interface POS pour encaisser vos clients et générer des reçus instantanément." }
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-6">
-                    <span className="text-4xl font-black text-emerald-300/50">{item.step}</span>
-                    <div>
-                      <h4 className="text-xl font-bold mb-2">{item.title}</h4>
-                      <p className="text-emerald-50 leading-relaxed">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="relative">
-              <motion.div
-                initial={{ rotate: 5, y: 20 }}
-                whileInView={{ rotate: 0, y: 0 }}
-                className="bg-white p-4 rounded-[2.5rem] shadow-2xl"
+            <div className="flex items-center gap-2 md:hidden">
+              <Link to="/register" className="rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-bold text-white">
+                Démarrer
+              </Link>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((open) => !open)}
+                aria-label={menuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+                aria-expanded={menuOpen}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700"
               >
-                <AnimatedPOS />
-              </motion.div>
+                {menuOpen ? <X size={21} /> : <Menu size={21} />}
+              </button>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* Testimonials */}
-      <section className="py-32 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-3xl md:text-5xl font-black text-slate-900 mb-6">Ils nous font confiance.</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              { name: "Moussa Traoré", role: "Propriétaire de Quincaillerie", text: "ShopMaster Pro a changé ma vie. Je sais exactement ce qu'il me reste en stock sans avoir à tout compter chaque soir." },
-              { name: "Fatou Diop", role: "Gérante de Prêt-à-porter", text: "L'envoi des reçus par WhatsApp est génial ! Mes clientes adorent et ça me donne une image très professionnelle." },
-              { name: "Koffi Mensah", role: "Directeur de Supérette", text: "Gérer mes trois boutiques depuis mon téléphone est devenu possible grâce à cette application. Un gain de temps énorme." }
-            ].map((t, i) => (
-              <div key={i} className="p-8 bg-slate-50 rounded-3xl border border-slate-100">
-                <div className="flex gap-1 mb-4">
-                  {[...Array(5)].map((_, i) => <Zap key={i} size={14} className="text-amber-500 fill-amber-500" />)}
+          {menuOpen && (
+            <nav className="border-t border-slate-100 bg-white px-4 py-3 md:hidden" aria-label="Menu mobile">
+              {[
+                ['#avantages', 'Avantages'],
+                ['#fonctionnement', 'Fonctionnement'],
+                ['#tarifs', 'Tarifs'],
+              ].map(([href, label]) => (
+                <a key={href} href={href} onClick={closeMenu} className="block rounded-xl px-3 py-3 font-semibold text-slate-700 hover:bg-brand-50">
+                  {label}
+                </a>
+              ))}
+              <Link to="/login" onClick={closeMenu} className="block rounded-xl px-3 py-3 font-semibold text-slate-700 hover:bg-brand-50">
+                Connexion
+              </Link>
+            </nav>
+          )}
+        </header>
+
+        <div aria-hidden="true" className="h-16 sm:h-20" />
+
+        <main>
+          <section className="relative px-4 pb-16 pt-12 sm:px-6 sm:pb-24 sm:pt-20">
+            <div className="pointer-events-none absolute -right-40 -top-32 h-96 w-96 rounded-full bg-amber-100/70 blur-3xl" />
+            <div className="pointer-events-none absolute -left-40 bottom-0 h-72 w-72 rounded-full bg-brand-50 blur-3xl" />
+
+            <div className="relative mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-2 lg:gap-16">
+              <Reveal>
+                <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-4 py-2 text-sm font-bold text-brand-700">
+                  <Sparkles size={16} />
+                  La gestion du commerce, en plus simple
+                </p>
+
+                <h1 className="max-w-2xl text-4xl font-extrabold leading-tight tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+                  Votre boutique bien gérée,{' '}
+                  <span className="relative inline-block text-brand-600">
+                    chaque jour.
+                    <span className="absolute -bottom-1 left-0 -z-10 h-3 w-full rounded-full bg-accent-500/60" />
+                  </span>
+                </h1>
+
+                <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600 sm:text-xl">
+                  Encaissez en FCFA, suivez votre stock et gardez un œil sur votre activité,
+                  depuis votre téléphone ou votre ordinateur.
+                </p>
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Link to="/register" className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-4 font-bold text-white shadow-lg shadow-brand-900/15 transition hover:-translate-y-0.5 hover:bg-brand-700">
+                    Créer ma boutique gratuitement
+                    <ArrowRight size={19} />
+                  </Link>
+                  <a href="#fonctionnement" className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-4 font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-700">
+                    Découvrir MaCaisse
+                  </a>
                 </div>
-                <p className="text-slate-700 mb-6 italic">"{t.text}"</p>
-                <div>
-                  <p className="font-bold text-slate-900">{t.name}</p>
-                  <p className="text-sm text-slate-500">{t.role}</p>
+
+                <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 text-sm font-medium text-slate-600">
+                  {['Plan gratuit disponible', 'Prix en FCFA', 'Sur téléphone et ordinateur'].map((item) => (
+                    <span key={item} className="inline-flex items-center gap-2">
+                      <Check size={16} className="text-brand-600" />
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </Reveal>
+
+              <Reveal>
+                <CaisseDemo />
+              </Reveal>
+            </div>
+          </section>
+
+          <section className="landing-marquee overflow-hidden border-y border-amber-300 bg-accent-500 py-4" aria-label="Les avantages de MaCaisse">
+            <div className="landing-marquee-track flex w-max items-center">
+              {[0, 1].map((copy) => (
+                <div key={copy} aria-hidden={copy === 1} className="flex shrink-0 items-center">
+                  {['Caisse rapide', 'Stock sous contrôle', 'Ventes et rapports', 'Fonctionne hors ligne', 'Pensé pour le FCFA'].map((item) => (
+                    <span key={`${copy}-${item}`} className="mx-5 inline-flex items-center gap-3 whitespace-nowrap text-sm font-extrabold text-slate-950 sm:mx-8 sm:text-base">
+                      <span className="h-1.5 w-1.5 rounded-full bg-brand-700" />
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section id="avantages" className="scroll-mt-24 px-4 py-20 sm:px-6 sm:py-24">
+            <div className="mx-auto max-w-6xl">
+              <Reveal className="mx-auto max-w-2xl text-center">
+                <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-brand-600">
+                  Tout au même endroit
+                </p>
+                <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+                  Plus de visibilité sur votre commerce.
+                </h2>
+                <p className="mt-4 text-lg leading-relaxed text-slate-600">
+                  Les outils essentiels pour vendre, gérer vos produits et suivre votre activité.
+                </p>
+              </Reveal>
+
+              <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {features.map(({ icon: Icon, title, description }, index) => (
+                  <Reveal key={title}>
+                    <article className="h-full rounded-2xl border border-slate-200 bg-white p-6 transition duration-200 hover:-translate-y-1 hover:border-brand-200 hover:shadow-xl hover:shadow-brand-900/5">
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${index === 1 ? 'bg-amber-100 text-amber-700' : 'bg-brand-50 text-brand-600'}`}>
+                        <Icon size={23} />
+                      </div>
+                      <h3 className="mt-5 text-lg font-bold text-slate-900">{title}</h3>
+                      <p className="mt-2 leading-relaxed text-slate-600">{description}</p>
+                    </article>
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section id="fonctionnement" className="scroll-mt-24 bg-slate-50 px-4 py-20 sm:px-6 sm:py-24">
+            <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+              <Reveal>
+                <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-brand-600">
+                  Pour commencer
+                </p>
+                <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+                  Trois étapes. Et vous êtes prêt.
+                </h2>
+                <p className="mt-4 text-lg leading-relaxed text-slate-600">
+                  Mettez en place une gestion simple, adaptée au quotidien de votre boutique.
+                </p>
+                <Link to="/register" className="mt-6 inline-flex items-center gap-2 font-bold text-brand-700 hover:text-brand-900">
+                  Créer ma boutique <ArrowRight size={18} />
+                </Link>
+              </Reveal>
+
+              <div className="space-y-3">
+                {steps.map((step) => (
+                  <Reveal key={step.number}>
+                    <article className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:gap-5 sm:p-6">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-sm font-extrabold text-white">
+                        {step.number}
+                      </span>
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900">{step.title}</h3>
+                        <p className="mt-1 leading-relaxed text-slate-600">{step.description}</p>
+                      </div>
+                    </article>
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="px-4 py-16 sm:px-6 sm:py-20">
+            <div className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-brand-900 px-6 py-9 text-white sm:px-10 sm:py-12">
+              <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                <Reveal>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-accent-500">
+                    <Smartphone size={25} />
+                  </div>
+                  <h2 className="mt-5 max-w-2xl text-3xl font-extrabold tracking-tight sm:text-4xl">
+                    Pensé pour votre quotidien.
+                  </h2>
+                  <p className="mt-4 max-w-2xl leading-relaxed text-brand-100">
+                    Une interface en français, des montants en FCFA et un accès sur téléphone comme sur ordinateur.
+                  </p>
+                </Reveal>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { icon: Users, label: 'Gestion des clients' },
+                    { icon: Cloud, label: 'Sauvegarde' },
+                    { icon: ShieldCheck, label: 'Données protégées' },
+                    { icon: Smartphone, label: 'Accès mobile' },
+                  ].map(({ icon: Icon, label }) => (
+                    <div key={label} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-white">
+                      <Icon size={17} className="shrink-0 text-accent-500" />
+                      {label}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
+          </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-32 px-6 bg-slate-50 transition-colors">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-20">
-            <h2 className="text-3xl md:text-5xl font-black text-slate-900 mb-6 tracking-tight">
-              Des tarifs simples et transparents.
-            </h2>
-            <p className="text-lg text-slate-600">
-              Choisissez le plan qui correspond à la taille de votre entreprise.
-            </p>
-          </div>
+          <section id="tarifs" className="scroll-mt-24 bg-slate-50 px-4 py-14 sm:px-6 sm:py-16">
+            <div className="mx-auto max-w-5xl">
+              <Reveal className="mb-8 text-center">
+                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-600">
+                  Nos tarifs
+                </p>
+                <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">
+                  Simple pour commencer, complet pour grandir.
+                </h2>
+              </Reveal>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {/* Free Plan */}
-            <div className="bg-white p-10 rounded-3xl border border-slate-200 shadow-sm">
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Gratuit</h3>
-              <p className="text-slate-500 mb-6">Pour les petites boutiques</p>
-              <div className="mb-8">
-                <span className="text-5xl font-black text-slate-900">0 FCFA</span>
-                <span className="text-slate-500">/mois</span>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Reveal>
+                  <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-extrabold text-slate-950">Gratuit</h3>
+                        <p className="mt-1 text-sm text-slate-500">Pour démarrer</p>
+                      </div>
+                      <p className="whitespace-nowrap text-xl font-extrabold text-slate-950">
+                        0 <span className="text-sm">FCFA</span>
+                      </p>
+                    </div>
+
+                    <ul className="mt-5 space-y-2 text-sm text-slate-700">
+                      {['Jusqu’à 50 produits', 'Ventes de base'].map((item) => (
+                        <li key={item} className="flex items-center gap-2">
+                          <Check size={16} className="shrink-0 text-brand-600" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Link to="/register" className="mt-5 block rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-bold text-slate-800 transition hover:border-brand-500 hover:text-brand-700">
+                      Commencer gratuitement
+                    </Link>
+                  </article>
+                </Reveal>
+
+                <Reveal>
+                  <article className="rounded-2xl bg-brand-900 p-5 text-white sm:p-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-accent-400">
+                          Premium
+                        </span>
+                        <p className="mt-1 text-sm text-brand-100">Plus d’outils pour votre boutique</p>
+                      </div>
+                      <p className="whitespace-nowrap text-lg font-extrabold sm:text-xl">
+                        10 000 <span className="text-xs font-semibold text-brand-100">FCFA/mois</span>
+                      </p>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      {durations.map((duration) => (
+                        <div key={duration.label} className="rounded-xl bg-white/10 px-2 py-2 text-center">
+                          <p className="text-[11px] font-medium text-brand-100">{duration.label}</p>
+                          <p className="mt-0.5 text-sm font-extrabold">{duration.price}</p>
+                          <p className="text-[10px] text-brand-100">FCFA</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="mt-3 text-xs text-brand-100">
+                      Produits illimités · Analyses IA · Sauvegarde · Rapports PDF
+                    </p>
+
+                    <Link to="/register" className="mt-4 block rounded-xl bg-accent-500 px-4 py-3 text-center text-sm font-extrabold text-slate-950 transition hover:bg-amber-400">
+                      Créer ma boutique
+                    </Link>
+                    <p className="mt-2 text-center text-[11px] text-brand-100">
+                      Choisissez votre durée depuis votre compte.
+                    </p>
+                  </article>
+                </Reveal>
               </div>
-              <ul className="space-y-4 mb-10">
-                {["POS Illimité", "Gestion de Stock", "Historique 30 jours", "Mode Hors-ligne"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-slate-600">
-                    <CheckCircle2 size={18} className="text-emerald-500" />
-                    {item}
-                  </li>
+            </div>
+          </section>
+
+          <section className="px-4 py-16 sm:px-6 sm:py-20">
+            <div className="mx-auto max-w-3xl">
+              <Reveal className="text-center">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                  <Sparkles size={22} />
+                </div>
+                <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+                  Questions fréquentes
+                </h2>
+              </Reveal>
+
+              <div className="mt-7 space-y-3">
+                {questions.map((item) => (
+                  <details key={item.question} className="group rounded-2xl border border-slate-200 bg-white p-5 open:border-brand-200 open:bg-brand-50/40">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold text-slate-900">
+                      {item.question}
+                      <ChevronDown size={19} className="shrink-0 text-brand-600 transition group-open:rotate-180" />
+                    </summary>
+                    <p className="mt-3 pr-7 leading-relaxed text-slate-600">{item.answer}</p>
+                  </details>
                 ))}
-              </ul>
-              <Link to="/register" className="block w-full text-center py-4 bg-slate-100 text-slate-900 font-bold rounded-2xl hover:bg-slate-200 transition-all">
-                Commencer gratuitement
-              </Link>
+              </div>
+            </div>
+          </section>
+
+          <section className="px-4 pb-16 sm:px-6 sm:pb-20">
+            <Reveal>
+              <div className="mx-auto max-w-5xl rounded-[2rem] bg-brand-50 px-6 py-11 text-center sm:px-10 sm:py-14">
+                <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-brand-600">
+                  MaCaisse
+                </p>
+                <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+                  Prêt à mieux gérer votre boutique ?
+                </h2>
+                <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-slate-600">
+                  Créez votre compte et découvrez les outils pensés pour votre activité.
+                </p>
+                <Link to="/register" className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-4 font-extrabold text-white shadow-lg shadow-brand-900/15 transition hover:-translate-y-0.5 hover:bg-brand-700">
+                  Commencer gratuitement <ArrowRight size={19} />
+                </Link>
+              </div>
+            </Reveal>
+          </section>
+        </main>
+
+        <footer className="border-t border-slate-200 px-4 py-9 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <Logo />
+              <p className="mt-2 text-sm text-slate-500">
+                La caisse et la gestion de stock pour votre boutique.
+              </p>
             </div>
 
-            {/* Pro Plan */}
-            <div className="bg-emerald-600 p-10 rounded-3xl shadow-2xl shadow-emerald-200 relative overflow-hidden transition-colors">
-              <div className="absolute top-0 right-0 p-4">
-                <span className="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">Recommandé</span>
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Premium</h3>
-              <p className="text-emerald-100 mb-6">Pour une croissance maximale</p>
-              <div className="mb-8">
-                <span className="text-5xl font-black text-white">10,000 FCFA</span>
-                <span className="text-emerald-100">/mois</span>
-              </div>
-              <ul className="space-y-4 mb-10">
-                {["POS Illimité", "Gestion de Stock", "Historique 30 jours", "Mode Hors-ligne"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-white">
-                    <CheckCircle2 size={18} className="text-emerald-300" />
-                    {item}
-                  </li>
-                ))}
-                {["Gestion Clients", "Gestion Fournisseurs", "Gestion Utilisateurs", "IA Insights", "Multi-boutiques"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-emerald-200/50">
-                    <CheckCircle2 size={18} />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <Link to="/register" className="block w-full text-center py-4 bg-white text-emerald-600 font-bold rounded-2xl hover:shadow-lg transition-all">
-                Passer au Pro
-              </Link>
-            </div>
+            <nav aria-label="Liens de pied de page" className="flex flex-wrap gap-x-5 gap-y-3 text-sm font-semibold text-slate-600">
+              <a href="#avantages" className="hover:text-brand-700">Avantages</a>
+              <a href="#tarifs" className="hover:text-brand-700">Tarifs</a>
+              <Link to="/login" className="hover:text-brand-700">Connexion</Link>
+              <Link to="/register" className="hover:text-brand-700">Créer ma boutique</Link>
+            </nav>
           </div>
-        </div>
-      </section>
 
-      {/* CTA Section */}
-      <section className="py-32 px-6">
-        <div className="max-w-5xl mx-auto bg-slate-900 rounded-[40px] p-12 md:p-20 text-center relative overflow-hidden border border-slate-800">
-          <div className="absolute top-0 left-0 w-full h-full bg-emerald-500/5 backdrop-blur-3xl"></div>
-          <div className="relative z-10">
-            <h2 className="text-3xl md:text-5xl font-black text-white mb-8 tracking-tight">
-              Prêt à transformer votre commerce ?
-            </h2>
-            <p className="text-xl text-emerald-100 mb-12 max-w-2xl mx-auto">
-              Rejoignez des milliers de commerçants qui font confiance à ShopMaster Pro pour gérer leur entreprise au quotidien.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
-              <Link to="/register" className="w-full sm:w-auto bg-white text-slate-900 px-10 py-4 rounded-2xl font-bold text-lg hover:shadow-xl transition-all">
-                Créer mon compte
-              </Link>
-              <Link to="/login" className="w-full sm:w-auto text-white border border-white/30 px-10 py-4 rounded-2xl font-bold text-lg hover:bg-white/10 transition-all">
-                Se connecter
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-20 px-6 border-t border-slate-100">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-12">
-          <div className="col-span-2">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center text-white">
-                <Store size={18} strokeWidth={2.5} />
-              </div>
-              <span className="text-lg font-bold text-slate-900 tracking-tight">ShopMaster Pro</span>
-            </div>
-            <p className="text-slate-500 max-w-sm leading-relaxed">
-              La plateforme de gestion commerciale intelligente pour les boutiques modernes. Simplifiez vos opérations, augmentez vos ventes.
-            </p>
-          </div>
-          <div>
-            <h4 className="font-bold text-slate-900 mb-6">Produit</h4>
-            <ul className="space-y-4 text-slate-500 text-sm">
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">POS</a></li>
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">Inventaire</a></li>
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">IA Insights</a></li>
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">Mode Offline</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-bold text-slate-900 mb-6">Légal</h4>
-            <ul className="space-y-4 text-slate-500 text-sm">
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">Confidentialité</a></li>
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">Conditions</a></li>
-              <li><a href="#" className="hover:text-emerald-600 transition-colors">Sécurité</a></li>
-            </ul>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-50 flex flex-col md:row items-center justify-between gap-4">
-          <p className="text-sm text-slate-400">© 2026 ShopMaster Pro. Tous droits réservés.</p>
-          <div className="flex items-center gap-6">
-            <Globe size={20} className="text-slate-400 hover:text-emerald-600 cursor-pointer" />
-            <Smartphone size={20} className="text-slate-400 hover:text-emerald-600 cursor-pointer" />
-          </div>
-        </div>
-      </footer>
-    </div>
+          <p className="mx-auto mt-7 max-w-6xl border-t border-slate-100 pt-5 text-xs text-slate-400">
+            © {new Date().getFullYear()} MaCaisse. Tous droits réservés.
+          </p>
+        </footer>
+      </div>
+    </MotionConfig>
   );
 }

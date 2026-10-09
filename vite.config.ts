@@ -12,26 +12,37 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        includeAssets: ['favicon.ico', 'favicon-32.png', 'apple-touch-icon.png', 'logo.png'],
         workbox: {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
         },
         manifest: {
-          name: 'ShopMaster Pro POS',
-          short_name: 'ShopMaster Pro',
-          description: 'Gestion de stock et point de vente intelligent',
-          theme_color: '#059669',
+          name: 'MaCaisse',
+          short_name: 'MaCaisse',
+          description: 'Caisse et gestion de stock pour votre boutique',
+          lang: 'fr',
+          start_url: '/',
+          theme_color: '#044598',
           background_color: '#ffffff',
           display: 'standalone',
           icons: [
             {
-              src: 'https://picsum.photos/192/192',
+              src: '/icon-192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: 'https://picsum.photos/512/512',
+              src: '/icon-512.png',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/icon-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         }
@@ -47,7 +58,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify: file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

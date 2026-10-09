@@ -53,6 +53,11 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <h1 className="text-2xl font-bold text-slate-800 mb-2">Oups ! Quelque chose a mal tourné</h1>
             <p className="text-slate-600 mb-8">{errorMessage}</p>
+            {this.state.error && (
+  <pre className="mb-6 whitespace-pre-wrap break-words rounded-lg bg-slate-100 p-3 text-left text-xs text-slate-700">
+    {this.state.error.message}
+  </pre>
+)}
             <button
               onClick={this.handleReset}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"

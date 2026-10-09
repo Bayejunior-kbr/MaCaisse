@@ -1,115 +1,166 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Store, 
-  DollarSign, 
-  TrendingUp, 
-  ShieldCheck, 
-  BarChart3, 
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  ArrowDownRight,
   ArrowUpRight,
+  Ban,
+  Bell,
+  Check,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Download,
+  Globe,
+  LayoutDashboard,
+  Loader2,
+  Lock,
+  Mail,
+  MessageSquare,
   Package,
   Search,
-  Loader2,
-  Check,
-  X,
-  Clock,
-  Ban,
-  AlertTriangle,
+  Send,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Store,
+  Terminal,
   Trash2,
   Unlock,
-  Send,
-  Mail,
-  Bell,
-  LayoutDashboard,
-  CreditCard,
-  MessageSquare,
-  Settings as SettingsIcon,
-  Zap,
-  Download,
-  Activity,
-  Globe,
-  Shield,
-  FileText,
-  Terminal,
-  Save,
   UserPlus,
-  Lock
+  Users,
+  X,
+  Zap,
 } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer 
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import { formatCurrency, cn } from '../lib/utils';
+import { cn, formatCurrency } from '../lib/utils';
 import { secureFetch } from '../lib/api';
 import { SubscriptionTimer } from '../components/SubscriptionTimer';
 import { ConfirmModal } from '../components/ConfirmModal';
 
-const AdminStatCard = ({ title, value, icon: Icon, color, trend, trendValue }: any) => (
-  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
-    <div className="flex items-center justify-between mb-4">
-      <div className={cn("p-3 rounded-2xl transition-transform group-hover:scale-110", color)}>
-        <Icon size={24} className="text-white" />
+type AdminTab =
+  | 'overview'
+  | 'shops'
+  | 'users'
+  | 'requests'
+  | 'broadcast'
+  | 'logs'
+  | 'settings';
+
+const panelClass =
+  'rounded-2xl border border-slate-200/80 bg-white shadow-sm';
+
+const inputClass =
+  'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#044598] focus:ring-4 focus:ring-blue-100';
+
+function SectionHeading({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        {eyebrow && (
+          <p className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#044598]">
+            {eyebrow}
+          </p>
+        )}
+        <h2 className="text-lg font-extrabold tracking-tight text-slate-900 sm:text-xl">
+          {title}
+        </h2>
+        {description && (
+          <p className="mt-1 text-sm text-slate-500">{description}</p>
+        )}
       </div>
-      {trend && (
-        <div className={cn(
-          "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold",
-          trend === 'up' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-        )}>
-          {trend === 'up' ? <ArrowUpRight size={12} /> : <TrendingUp size={12} className="rotate-180" />}
-          {trendValue}%
+      {action}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone = 'blue',
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail: string;
+  icon: React.ElementType;
+  tone?: 'blue' | 'amber' | 'violet' | 'slate';
+}) {
+  const tones = {
+    blue: 'bg-blue-50 text-[#044598]',
+    amber: 'bg-amber-50 text-amber-700',
+    violet: 'bg-violet-50 text-violet-700',
+    slate: 'bg-slate-100 text-slate-700',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3 }}
+      className={`${panelClass} p-4 sm:p-5`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="mt-2 truncate text-2xl font-extrabold tracking-tight text-slate-900">
+            {value}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">{detail}</p>
         </div>
+        <div className={cn('rounded-xl p-3', tones[tone])}>
+          <Icon size={20} />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center px-5 py-12 text-center">
+      <div className="mb-3 rounded-2xl bg-slate-100 p-3 text-slate-400">
+        <Icon size={24} />
+      </div>
+      <p className="text-sm font-bold text-slate-700">{title}</p>
+      {description && (
+        <p className="mt-1 max-w-sm text-xs text-slate-500">{description}</p>
       )}
     </div>
-    <h3 className="text-slate-500 text-sm font-medium mb-1">{title}</h3>
-    <p className="text-2xl font-bold text-slate-800">{value}</p>
-  </div>
-);
-
-const SystemHealthWidget = () => (
-  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-    <div className="flex items-center justify-between mb-6">
-      <h3 className="font-bold text-slate-800 flex items-center gap-2">
-        <ShieldCheck size={18} className="text-emerald-600" />
-        Santé du Système
-      </h3>
-      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-        <div className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-pulse" />
-        OPÉRATIONNEL
-      </span>
-    </div>
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-500">Base de données</span>
-        <span className="text-xs font-bold text-slate-700">Connecté (Postgres)</span>
-      </div>
-      <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-        <div className="bg-emerald-500 h-full w-[98%]" />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-500">Serveur API</span>
-        <span className="text-xs font-bold text-slate-700">Latence: 24ms</span>
-      </div>
-      <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-        <div className="bg-emerald-500 h-full w-[95%]" />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-500">Stockage (S3/Local)</span>
-        <span className="text-xs font-bold text-slate-700">42.5 GB / 100 GB</span>
-      </div>
-      <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-        <div className="bg-blue-500 h-full w-[42%]" />
-      </div>
-    </div>
-  </div>
-);
+  );
+}
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'shops' | 'users' | 'requests' | 'broadcast' | 'logs' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [stats, setStats] = useState<any>(null);
   const [shops, setShops] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -119,81 +170,72 @@ export default function AdminDashboard() {
   const [platformSettings, setPlatformSettings] = useState<any>({
     payment_number: '78 307 01 14',
     maintenance_mode: 'false',
-    support_email: 'support@smartstock.sn'
+    support_email: 'support@smartstock.sn',
   });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Broadcast state
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastMessage, setBroadcastMessage] = useState('');
-  const [broadcastTarget, setBroadcastTarget] = useState<string>('all'); // 'all' or shopId
+  const [broadcastTarget, setBroadcastTarget] = useState('all');
   const [sendingBroadcast, setSendingBroadcast] = useState(false);
 
   const [showAddAdminModal, setShowAddAdminModal] = useState(false);
-  const [newAdminData, setNewAdminData] = useState({ name: '', email: '', password: '' });
+  const [newAdminData, setNewAdminData] = useState({
+    name: '',
+    email: '',
+    password: '',
+  });
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<{ type: 'shop' | 'user', id: number } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: 'shop' | 'user';
+    id: number;
+  } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleCreateAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsCreatingAdmin(true);
-    try {
-      const res = await secureFetch('/api/admin/users/create-admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newAdminData)
-      });
-      if (res.ok) {
-        alert("Administrateur créé avec succès !");
-        setShowAddAdminModal(false);
-        setNewAdminData({ name: '', email: '', password: '' });
-        await fetchData();
-      } else {
-        const data = await res.json();
-        alert(data.error || "Erreur lors de la création");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Erreur réseau");
-    } finally {
-      setIsCreatingAdmin(false);
-    }
-  };
+  const [processingId, setProcessingId] = useState<number | null>(null);
+  const [processingShopId, setProcessingShopId] = useState<number | null>(null);
 
   const fetchData = async (retries = 2) => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) throw new Error("Non authentifié");
+      if (!token) throw new Error('Non authentifié');
 
       const [statsRes, shopsRes, requestsRes, usersRes] = await Promise.all([
         secureFetch('/api/admin/stats'),
         secureFetch('/api/admin/shops'),
         secureFetch('/api/admin/subscription-requests'),
-        secureFetch('/api/admin/users')
+        secureFetch('/api/admin/users'),
       ]);
 
-      if (statsRes.status === 403 || shopsRes.status === 403 || requestsRes.status === 403) {
+      if (
+        statsRes.status === 403 ||
+        shopsRes.status === 403 ||
+        requestsRes.status === 403 ||
+        usersRes.status === 403
+      ) {
         throw new Error("Accès refusé. Vous n'êtes pas administrateur.");
       }
 
-      const checkResponse = async (res: Response) => {
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: "Erreur serveur" }));
-          throw new Error(errorData.error || "Erreur lors de la récupération des données");
+      const readResponse = async (response: Response) => {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({
+            error: 'Erreur serveur',
+          }));
+          throw new Error(data.error || 'Erreur lors de la récupération des données');
         }
-        return res.json();
+        return response.json();
       };
 
-      const [statsData, shopsData, requestsData, usersData] = await Promise.all([
-        checkResponse(statsRes),
-        checkResponse(shopsRes),
-        checkResponse(requestsRes),
-        checkResponse(usersRes)
-      ]);
+      const [statsData, shopsData, requestsData, usersData] =
+        await Promise.all([
+          readResponse(statsRes),
+          readResponse(shopsRes),
+          readResponse(requestsRes),
+          readResponse(usersRes),
+        ]);
 
       setStats(statsData);
       setShops(shopsData);
@@ -201,33 +243,111 @@ export default function AdminDashboard() {
       setUsers(usersData);
       setError(null);
     } catch (err: any) {
-      console.error("Fetch error:", err);
-      if (retries > 0 && err.message === 'Failed to fetch') {
-        setTimeout(() => fetchData(retries - 1), 1000);
+      console.error('Fetch error:', err);
+
+      if (retries > 0 && err?.message === 'Failed to fetch') {
+        window.setTimeout(() => void fetchData(retries - 1), 1000);
         return;
       }
-      setError(err.message || "Erreur lors de la récupération des données admin");
+
+      setError(err?.message || 'Erreur lors de la récupération des données admin');
     } finally {
       setLoading(false);
     }
   };
 
-  const [processingId, setProcessingId] = useState<number | null>(null);
-  const [processingShopId, setProcessingShopId] = useState<number | null>(null);
-  const [processingUserId, setProcessingUserId] = useState<number | null>(null);
-
-  const handleBlockShop = async (id: number, currentStatus: string) => {
-    const newStatus = currentStatus === 'blocked' ? 'active' : 'blocked';
-    setProcessingShopId(id);
+  const fetchLogs = async () => {
     try {
-      const res = await secureFetch(`/api/admin/shops/${id}/block`, {
+      const response = await secureFetch('/api/admin/logs');
+      if (response.ok) setLogs(await response.json());
+    } catch (err) {
+      console.error('Erreur lors du chargement des journaux:', err);
+    }
+  };
+
+  const fetchBroadcasts = async () => {
+    try {
+      const response = await secureFetch('/api/admin/broadcasts');
+      if (response.ok) setBroadcastHistory(await response.json());
+    } catch (err) {
+      console.error('Erreur lors du chargement des messages:', err);
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      const response = await secureFetch('/api/admin/settings');
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const settings: Record<string, string> = {};
+        data.forEach((item: any) => {
+          settings[item.key] = item.value;
+        });
+        setPlatformSettings((previous: any) => ({
+          ...previous,
+          ...settings,
+        }));
+      }
+    } catch (err) {
+      console.error('Erreur lors du chargement des paramètres:', err);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) setCurrentUser(JSON.parse(storedUser));
+    } catch (err) {
+      console.error('Utilisateur local invalide:', err);
+    }
+
+    void fetchData();
+    void fetchLogs();
+    void fetchBroadcasts();
+    void fetchSettings();
+  }, []);
+
+  const handleCreateAdmin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsCreatingAdmin(true);
+
+    try {
+      const response = await secureFetch('/api/admin/users/create-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify(newAdminData),
       });
-      if (res.ok) {
+
+      if (response.ok) {
+        alert('Administrateur créé avec succès !');
+        setShowAddAdminModal(false);
+        setNewAdminData({ name: '', email: '', password: '' });
         await fetchData();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Erreur lors de la création');
       }
+    } catch (err) {
+      console.error(err);
+      alert('Erreur réseau');
+    } finally {
+      setIsCreatingAdmin(false);
+    }
+  };
+
+  const handleBlockShop = async (id: number, currentStatus: string) => {
+    const status = currentStatus === 'blocked' ? 'active' : 'blocked';
+    setProcessingShopId(id);
+
+    try {
+      const response = await secureFetch(`/api/admin/shops/${id}/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (response.ok) await fetchData();
     } catch (err) {
       console.error(err);
     } finally {
@@ -235,17 +355,16 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSignalShop = async (id: number, currentSignaled: boolean) => {
+  const handleSignalShop = async (id: number, isSignaled: boolean) => {
     setProcessingShopId(id);
+
     try {
-      const res = await secureFetch(`/api/admin/shops/${id}/signal`, {
+      const response = await secureFetch(`/api/admin/shops/${id}/signal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signaled: !currentSignaled })
+        body: JSON.stringify({ signaled: !isSignaled }),
       });
-      if (res.ok) {
-        await fetchData();
-      }
+      if (response.ok) await fetchData();
     } catch (err) {
       console.error(err);
     } finally {
@@ -255,20 +374,22 @@ export default function AdminDashboard() {
 
   const handleDeleteShop = async (id: number) => {
     setIsDeleting(true);
+
     try {
-      const res = await secureFetch(`/api/admin/shops/${id}`, {
-        method: 'DELETE'
+      const response = await secureFetch(`/api/admin/shops/${id}`, {
+        method: 'DELETE',
       });
-      if (res.ok) {
+
+      if (response.ok) {
         await fetchData();
         setConfirmDelete(null);
       } else {
-        const data = await res.json();
-        alert(data.error || "Erreur lors de la suppression de la boutique");
+        const data = await response.json();
+        alert(data.error || 'Erreur lors de la suppression de la boutique');
       }
     } catch (err) {
       console.error(err);
-      alert("Une erreur réseau est survenue");
+      alert('Une erreur réseau est survenue');
     } finally {
       setIsDeleting(false);
     }
@@ -276,16 +397,18 @@ export default function AdminDashboard() {
 
   const handleDeleteUser = async (id: number) => {
     setIsDeleting(true);
+
     try {
-      const res = await secureFetch(`/api/admin/users/${id}`, {
-        method: 'DELETE'
+      const response = await secureFetch(`/api/admin/users/${id}`, {
+        method: 'DELETE',
       });
-      if (res.ok) {
+
+      if (response.ok) {
         await fetchData();
         setConfirmDelete(null);
       } else {
-        const data = await res.json();
-        alert(`Erreur: ${data.error || "Erreur lors de la suppression"}`);
+        const data = await response.json();
+        alert(data.error || "Erreur lors de la suppression de l'utilisateur");
       }
     } catch (err) {
       console.error(err);
@@ -297,15 +420,18 @@ export default function AdminDashboard() {
 
   const handleApprove = async (id: number) => {
     setProcessingId(id);
+
     try {
-      const res = await secureFetch(`/api/admin/subscription-requests/${id}/approve`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        alert("Abonnement approuvé !");
+      const response = await secureFetch(
+        `/api/admin/subscription-requests/${id}/approve`,
+        { method: 'POST' },
+      );
+
+      if (response.ok) {
+        alert('Abonnement approuvé !');
         await fetchData();
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
     } finally {
       setProcessingId(null);
@@ -314,1185 +440,1492 @@ export default function AdminDashboard() {
 
   const handleReject = async (id: number) => {
     setProcessingId(id);
+
     try {
-      const res = await secureFetch(`/api/admin/subscription-requests/${id}/reject`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        await fetchData();
-      }
-    } catch (err: any) {
+      const response = await secureFetch(
+        `/api/admin/subscription-requests/${id}/reject`,
+        { method: 'POST' },
+      );
+
+      if (response.ok) await fetchData();
+    } catch (err) {
       console.error(err);
     } finally {
       setProcessingId(null);
     }
   };
 
-  const fetchLogs = async () => {
-    try {
-      const res = await secureFetch('/api/admin/logs');
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data);
-      }
-    } catch (err) {
-      console.error("Error fetching logs:", err);
-    }
-  };
-
-  const fetchBroadcasts = async () => {
-    try {
-      const res = await secureFetch('/api/admin/broadcasts');
-      if (res.ok) {
-        const data = await res.json();
-        setBroadcastHistory(data);
-      }
-    } catch (err) {
-      console.error("Error fetching broadcasts:", err);
-    }
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const res = await secureFetch('/api/admin/settings');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.length > 0) {
-          const settingsObj: any = {};
-          data.forEach((s: any) => {
-            settingsObj[s.key] = s.value;
-          });
-          setPlatformSettings(settingsObj);
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching settings:", err);
-    }
-  };
-
   const handleSaveSettings = async () => {
     try {
-      const res = await secureFetch('/api/admin/settings', {
+      const response = await secureFetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings: platformSettings })
+        body: JSON.stringify({ settings: platformSettings }),
       });
-      if (res.ok) {
-        alert("Paramètres enregistrés !");
-        fetchSettings();
+
+      if (response.ok) {
+        alert('Paramètres enregistrés !');
+        void fetchSettings();
       }
     } catch (err) {
-      console.error("Error saving settings:", err);
+      console.error('Erreur lors de la sauvegarde des paramètres:', err);
     }
   };
 
   const exportToCSV = (data: any[], filename: string) => {
-    if (!data || data.length === 0) return;
-    const headers = Object.keys(data[0]).join(',');
-    const rows = data.map(obj => 
-      Object.values(obj).map(val => 
-        typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val
-      ).join(',')
+    if (!data?.length) {
+      alert('Aucune donnée à exporter.');
+      return;
+    }
+
+    const headers = Object.keys(data[0]);
+    const rows = data.map((item) =>
+      headers
+        .map((header) => {
+          const value = item[header];
+          const escaped =
+            typeof value === 'string'
+              ? `"${value.replace(/"/g, '""')}"`
+              : String(value ?? '');
+          return escaped;
+        })
+        .join(','),
     );
-    const csvContent = [headers, ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${filename}.csv`);
-    link.style.visibility = 'hidden';
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `${filename}.csv`;
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleSendBroadcast = async () => {
-    if (!broadcastTitle || !broadcastMessage) return;
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) return;
     setSendingBroadcast(true);
+
     try {
-      const res = await secureFetch('/api/admin/broadcast', {
+      const response = await secureFetch('/api/admin/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: broadcastTitle,
           message: broadcastMessage,
-          shopId: broadcastTarget === 'all' ? null : parseInt(broadcastTarget)
-        })
+          shopId: broadcastTarget === 'all' ? null : Number(broadcastTarget),
+        }),
       });
-      if (res.ok) {
-        alert("Message envoyé avec succès !");
+
+      if (response.ok) {
+        alert('Message envoyé avec succès !');
         setBroadcastTitle('');
         setBroadcastMessage('');
-        fetchBroadcasts();
+        void fetchBroadcasts();
+      } else {
+        const data = await response.json();
+        alert(data.error || "Impossible d'envoyer le message.");
       }
     } catch (err) {
       console.error(err);
+      alert('Erreur réseau lors de l’envoi du message.');
     } finally {
       setSendingBroadcast(false);
     }
   };
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) setCurrentUser(JSON.parse(storedUser));
-    fetchData();
-    fetchLogs();
-    fetchBroadcasts();
-    fetchSettings();
-  }, []);
+  const filteredShops = shops.filter((shop) =>
+    shop.name?.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+  const filteredUsers = users.filter(
+    (user) =>
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
 
-  if (loading) return <div className="flex items-center justify-center h-full">Chargement de la console...</div>;
+  const pendingCount = subscriptionRequests.filter(
+    (request) => request.status === 'pending',
+  ).length;
+  const flaggedCount = shops.filter((shop) => shop.is_signaled).length;
 
-  if (error) {
+  const tabs: { id: AdminTab; label: string; icon: React.ElementType }[] = [
+    { id: 'overview', label: 'Vue générale', icon: LayoutDashboard },
+    { id: 'shops', label: 'Boutiques', icon: Store },
+    { id: 'users', label: 'Utilisateurs', icon: Users },
+    { id: 'requests', label: 'Abonnements', icon: CreditCard },
+    { id: 'broadcast', label: 'Messages', icon: MessageSquare },
+    { id: 'logs', label: 'Journal', icon: Terminal },
+    { id: 'settings', label: 'Paramètres', icon: Settings },
+  ];
+
+  if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full space-y-4 text-center p-8">
-        <div className="p-4 bg-red-50 text-red-600 rounded-3xl border border-red-100 max-w-md">
-          <p className="font-bold mb-2">Erreur d'accès</p>
-          <p className="text-sm">{error}</p>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3">
+        <div className="rounded-2xl bg-blue-50 p-4 text-[#044598]">
+          <Loader2 size={26} className="animate-spin" />
         </div>
-        <button onClick={() => fetchData()} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Réessayer</button>
+        <p className="text-sm font-semibold text-slate-600">
+          Chargement de la console…
+        </p>
       </div>
     );
   }
 
-  const filteredShops = shops.filter(s => s.name?.toLowerCase().includes(searchTerm.toLowerCase()));
-  const filteredUsers = users.filter(u => u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()));
+  if (error) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col items-center justify-center px-4 text-center">
+        <div className="mb-4 rounded-2xl bg-red-50 p-4 text-red-600">
+          <AlertCircle size={28} />
+        </div>
+        <h2 className="text-xl font-extrabold text-slate-900">Accès indisponible</h2>
+        <p className="mt-2 text-sm text-slate-500">{error}</p>
+        <button
+          onClick={() => {
+            setLoading(true);
+            void fetchData();
+          }}
+          className="mt-5 rounded-xl bg-[#044598] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#033875]"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
 
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="text-center lg:text-left">
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-800">Super Admin</h2>
-          <p className="text-slate-500 text-sm md:text-base">Gestion globale de ShopMaster Pro</p>
-        </div>
-        
-        <div className="flex bg-slate-100 p-1 rounded-2xl overflow-x-auto no-scrollbar max-w-full">
-          <div className="flex min-w-max">
-            <button 
-              onClick={() => setActiveTab('overview')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'overview' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Vue d'ensemble
-            </button>
-            <button 
-              onClick={() => setActiveTab('shops')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'shops' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Boutiques
-            </button>
-            <button 
-              onClick={() => setActiveTab('users')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'users' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Utilisateurs
-            </button>
-            <button 
-              onClick={() => setActiveTab('requests')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'requests' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Demandes
-            </button>
-            <button 
-              onClick={() => setActiveTab('broadcast')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'broadcast' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Messages
-            </button>
-            <button 
-              onClick={() => setActiveTab('logs')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'logs' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Logs
-            </button>
-            <button 
-              onClick={() => setActiveTab('settings')}
-              className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap", activeTab === 'settings' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-700")}
-            >
-              Paramètres
-            </button>
-          </div>
-        </div>
+  const renderOverview = () => (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Boutiques"
+          value={stats?.totalShops || 0}
+          detail="Boutiques enregistrées"
+          icon={Store}
+          tone="blue"
+        />
+        <StatCard
+          label="Utilisateurs"
+          value={stats?.totalUsers || 0}
+          detail="Comptes sur la plateforme"
+          icon={Users}
+          tone="violet"
+        />
+        <StatCard
+          label="Revenus abonnements"
+          value={formatCurrency(
+            stats?.totalSubscriptionRevenue || 0,
+            currentUser?.currency,
+          )}
+          detail="Revenus cumulés"
+          icon={CreditCard}
+          tone="amber"
+        />
+        <StatCard
+          label="Boutiques Premium"
+          value={stats?.premiumShops || 0}
+          detail="Abonnements Premium actifs"
+          icon={ShieldCheck}
+          tone="slate"
+        />
       </div>
 
-      {activeTab === 'overview' && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <AdminStatCard title="Boutiques" value={stats?.totalShops || 0} icon={Store} color="bg-blue-600" trend="up" trendValue={12} />
-            <AdminStatCard title="Utilisateurs" value={stats?.totalUsers || 0} icon={Users} color="bg-indigo-600" trend="up" trendValue={8} />
-            <AdminStatCard title="Revenus Abos" value={formatCurrency(stats?.totalSubscriptionRevenue || 0, currentUser?.currency)} icon={DollarSign} color="bg-emerald-600" trend="up" trendValue={24} />
-            <AdminStatCard title="Premium" value={stats?.premiumShops || 0} icon={ShieldCheck} color="bg-amber-500" trend="up" trendValue={5} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-800">Revenus Abonnements (30j)</h3>
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-                    <ArrowUpRight size={12} />
-                    +15.4%
-                  </span>
-                </div>
-              </div>
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={stats?.subscriptionsByDay || []}>
-                    <defs>
-                      <linearGradient id="colorAdmin" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="opacity-10" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(val) => `${val/1000}k`} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#f8fafc' }} />
-                    <Area type="monotone" dataKey="amount" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorAdmin)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <SystemHealthWidget />
-
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Actions Rapides</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setActiveTab('broadcast')} className="p-4 bg-slate-50 rounded-2xl flex flex-col items-center gap-2 hover:bg-emerald-50 transition-all group">
-                    <Send size={20} className="text-emerald-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-[10px] font-bold text-slate-600">Diffuser</span>
-                  </button>
-                  <button onClick={() => setActiveTab('requests')} className="p-4 bg-slate-50 rounded-2xl flex flex-col items-center gap-2 hover:bg-amber-50 transition-all group">
-                    <CreditCard size={20} className="text-amber-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-[10px] font-bold text-slate-600">Demandes</span>
-                  </button>
-                  <button onClick={() => setActiveTab('shops')} className="p-4 bg-slate-50 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-50 transition-all group">
-                    <Store size={20} className="text-blue-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-[10px] font-bold text-slate-600">Boutiques</span>
-                  </button>
-                  <button onClick={() => setActiveTab('settings')} className="p-4 bg-slate-50 rounded-2xl flex flex-col items-center gap-2 hover:bg-slate-100 transition-all group">
-                    <SettingsIcon size={20} className="text-slate-600 group-hover:scale-110 transition-transform" />
-                    <span className="text-[10px] font-bold text-slate-600">Réglages</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Top Boutiques</h3>
-                <div className="space-y-4">
-                  {shops.sort((a, b) => (b.totalSales || 0) - (a.totalSales || 0)).slice(0, 3).map((shop, idx) => (
-                    <div key={shop.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="text-xs font-bold text-slate-400 w-4">{idx + 1}</div>
-                        <div className="text-sm font-bold text-slate-800">{shop.name}</div>
-                      </div>
-                      <div className="text-sm font-bold text-emerald-600">{formatCurrency(shop.totalSales || 0, currentUser?.currency)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Revenus Plateforme</h3>
-                <div className="space-y-4">
-                  <div className="p-4 bg-emerald-50 rounded-2xl">
-                    <p className="text-xs text-emerald-600 uppercase font-bold mb-1">Abonnements (Est.)</p>
-                    <p className="text-2xl font-bold text-emerald-700">{formatCurrency((stats?.premiumShops || 0) * 10000, currentUser?.currency)}</p>
-                  </div>
-                  <div className="p-4 bg-blue-50 rounded-2xl">
-                    <p className="text-xs text-blue-600 uppercase font-bold mb-1">Boutiques Actives</p>
-                    <p className="text-2xl font-bold text-blue-700">{stats?.totalShops || 0}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
-                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-                  <Bell size={18} className="text-amber-500" />
-                  Alertes Système
-                </h3>
-                <div className="space-y-3">
-                  {subscriptionRequests.filter(r => r.status === 'pending').length > 0 && (
-                    <div className="flex items-center gap-3 text-sm text-slate-300">
-                      <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                      <span>{subscriptionRequests.filter(r => r.status === 'pending').length} demandes en attente</span>
-                    </div>
-                  )}
-                  {shops.filter(s => s.is_signaled).length > 0 && (
-                    <div className="flex items-center gap-3 text-sm text-slate-300">
-                      <div className="w-2 h-2 bg-red-500 rounded-full" />
-                      <span>{shops.filter(s => s.is_signaled).length} boutiques signalées</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 text-sm text-slate-300">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-                    <span>Système opérationnel</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-              <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <Users size={18} className="text-blue-600" />
-                Derniers Utilisateurs
-              </h4>
-              <div className="space-y-4">
-                {stats?.recentUsers?.map((u: any) => (
-                  <div key={u.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                        {u.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{u.name}</p>
-                        <p className="text-[10px] text-slate-500">{u.shopName || 'Sans Boutique'}</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-slate-400">{new Date(u.created_at).toLocaleDateString()}</span>
-                  </div>
-                ))}
-                {(!stats?.recentUsers || stats.recentUsers.length === 0) && (
-                  <p className="text-center text-slate-500 text-sm py-4">Aucun utilisateur récent.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-              <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                <CreditCard size={18} className="text-blue-600" />
-                Derniers Abonnements
-              </h4>
-              <div className="space-y-4">
-                {stats?.recentSubscriptions?.map((s: any) => (
-                  <div key={s.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                        <Zap size={18} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{s.shopName}</p>
-                        <p className="text-[10px] text-slate-500">{s.userName} • {s.payment_method}</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-slate-400">{new Date(s.created_at).toLocaleDateString()}</span>
-                  </div>
-                ))}
-                {(!stats?.recentSubscriptions || stats.recentSubscriptions.length === 0) && (
-                  <p className="text-center text-slate-500 text-sm py-4">Aucun abonnement récent.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {activeTab === 'shops' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <h3 className="text-lg font-bold text-slate-800">Toutes les Boutiques</h3>
-              <button 
-                onClick={() => exportToCSV(shops, 'boutiques-export')}
-                className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors"
-              >
-                <Download size={14} />
-                Exporter CSV
-              </button>
-            </div>
-            <div className="relative w-full lg:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Rechercher une boutique..." 
-                className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500 text-slate-800"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+      <div className="grid gap-4 xl:grid-cols-[1.6fr_0.9fr]">
+        <section className={`${panelClass} p-4 sm:p-5`}>
+          <SectionHeading
+            eyebrow="Activité"
+            title="Revenus des abonnements"
+            description="Évolution selon les données disponibles."
+          />
+          <div className="h-64 min-h-[240px] w-full">
+            {stats?.subscriptionsByDay?.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={stats.subscriptionsByDay}>
+                  <defs>
+                    <linearGradient
+                      id="macaisseAdminRevenue"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#044598" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#044598" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
+                  <XAxis
+                    dataKey="date"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                    tickFormatter={(value) => `${Math.round(value / 1000)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#08264d',
+                      border: 'none',
+                      borderRadius: 12,
+                      color: '#fff',
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="amount"
+                    stroke="#044598"
+                    strokeWidth={3}
+                    fill="url(#macaisseAdminRevenue)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState
+                icon={Activity}
+                title="Pas encore de données à afficher"
+                description="Le graphique apparaîtra dès que des revenus d’abonnement seront enregistrés."
               />
-            </div>
-          </div>
-          <div className="overflow-x-auto hidden md:block">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Boutique</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Plan</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Stats</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Ventes</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredShops.length > 0 ? filteredShops.map(shop => (
-                  <tr key={shop.id} className={cn(
-                    "hover:bg-slate-50 transition-colors group",
-                    shop.status === 'blocked' ? "bg-red-50/30" : "",
-                    shop.is_signaled ? "border-l-4 border-l-amber-500" : ""
-                  )}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-bold group-hover:bg-white transition-colors">
-                          {shop.name.charAt(0)}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-800 flex items-center gap-2">
-                            {shop.name}
-                            {shop.is_signaled && <AlertTriangle size={14} className="text-amber-500 animate-pulse" />}
-                          </span>
-                          <span className="text-[10px] text-slate-500">Créé le {new Date(shop.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        <span className={cn(
-                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider w-fit",
-                          shop.plan === 'premium' ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-slate-100 text-slate-600 border border-slate-200"
-                        )}>
-                          {shop.plan}
-                        </span>
-                        {shop.plan === 'premium' && shop.subscription_expires_at && (
-                          <SubscriptionTimer expiresAt={shop.subscription_expires_at} plan={shop.plan} />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-4 text-xs text-slate-500">
-                        <span title="Utilisateurs" className="flex items-center gap-1"><Users size={12} />{shop.userCount}</span>
-                        <span title="Produits" className="flex items-center gap-1"><Package size={12} />{shop.productCount}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-slate-800">{formatCurrency(shop.totalSales || 0, currentUser?.currency)}</span>
-                        <span className="text-[10px] text-emerald-600 font-bold">+{Math.floor(Math.random() * 20)}% ce mois</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleSignalShop(shop.id, !!shop.is_signaled)} className={cn("p-2 rounded-xl transition-all", shop.is_signaled ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-400 hover:text-amber-600")} title="Signaler">
-                          <AlertTriangle size={16} />
-                        </button>
-                        <button onClick={() => handleBlockShop(shop.id, shop.status)} className={cn("p-2 rounded-xl transition-all", shop.status === 'blocked' ? "bg-red-600 text-white shadow-lg shadow-red-100" : "bg-slate-100 text-slate-400 hover:text-red-600")} title={shop.status === 'blocked' ? "Débloquer" : "Bloquer"}>
-                          {shop.status === 'blocked' ? <Unlock size={16} /> : <Ban size={16} />}
-                        </button>
-                        <button onClick={() => setConfirmDelete({ type: 'shop', id: shop.id })} className="p-2 bg-slate-100 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all" title="Supprimer">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-20 text-center">
-                      <div className="flex flex-col items-center gap-3 text-slate-400">
-                        <Search size={48} className="opacity-20" />
-                        <p className="text-sm font-medium">Aucune boutique ne correspond à votre recherche.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Card View for Shops */}
-          <div className="md:hidden divide-y divide-slate-100">
-            {filteredShops.length > 0 ? filteredShops.map(shop => (
-              <div key={shop.id} className={cn(
-                "p-4 space-y-4",
-                shop.status === 'blocked' ? "bg-red-50/30" : "",
-                shop.is_signaled ? "border-l-4 border-l-amber-500" : ""
-              )}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-bold">
-                      {shop.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                        {shop.name}
-                        {shop.is_signaled && <AlertTriangle size={14} className="text-amber-500" />}
-                      </h4>
-                      <p className="text-[10px] text-slate-500">Créé le {new Date(shop.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                    shop.plan === 'premium' ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"
-                  )}>
-                    {shop.plan}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-2xl">
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Stats</p>
-                    <div className="flex gap-3 text-xs text-slate-700 font-medium">
-                      <span className="flex items-center gap-1"><Users size={12} />{shop.userCount}</span>
-                      <span className="flex items-center gap-1"><Package size={12} />{shop.productCount}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Ventes</p>
-                    <p className="text-xs font-bold text-slate-800">{formatCurrency(shop.totalSales || 0, currentUser?.currency)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <button onClick={() => handleSignalShop(shop.id, !!shop.is_signaled)} className={cn("p-2 rounded-xl", shop.is_signaled ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-400")}>
-                    <AlertTriangle size={18} />
-                  </button>
-                  <button onClick={() => handleBlockShop(shop.id, shop.status)} className={cn("p-2 rounded-xl", shop.status === 'blocked' ? "bg-red-600 text-white" : "bg-slate-100 text-slate-400")}>
-                    {shop.status === 'blocked' ? <Unlock size={18} /> : <Ban size={18} />}
-                  </button>
-                  <button onClick={() => setConfirmDelete({ type: 'shop', id: shop.id })} className="p-2 bg-slate-100 text-slate-400 rounded-xl">
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <div className="p-10 text-center text-slate-400">Aucune boutique trouvée</div>
             )}
           </div>
-        </div>
-      )}
+        </section>
 
-      {activeTab === 'users' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <h3 className="text-lg font-bold text-slate-800">Gestion des Utilisateurs</h3>
-              <div className="flex flex-wrap items-center gap-2">
-                <button 
-                  onClick={() => setShowAddAdminModal(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-sm shadow-blue-100"
-                >
-                  <UserPlus size={14} />
-                  Ajouter un Admin
-                </button>
-                <button 
-                  onClick={() => exportToCSV(users, 'utilisateurs')}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-emerald-50 hover:text-emerald-600 transition-all"
-                >
-                  <Download size={14} />
-                  Exporter CSV
-                </button>
-              </div>
-            </div>
-            <div className="relative w-full lg:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Rechercher un utilisateur..." 
-                className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500 text-slate-800"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="overflow-x-auto hidden md:block">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Utilisateur</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Email</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Boutique</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Rôle</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredUsers.length > 0 ? filteredUsers.map(u => (
-                  <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold group-hover:scale-110 transition-transform">
-                          {u.name.charAt(0)}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-800">{u.name}</span>
-                          <span className="text-[10px] text-slate-500">Inscrit le {new Date(u.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 text-sm font-medium">{u.email}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-700">{u.shopName || 'Administration'}</span>
-                        <span className="text-[10px] text-slate-500">ID Boutique: {u.shop_id || 'N/A'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        u.role === 'admin' ? "bg-blue-100 text-blue-700 border border-blue-200" : 
-                        u.role === 'owner' ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
-                        "bg-slate-100 text-slate-600 border border-slate-200"
-                      )}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => setConfirmDelete({ type: 'user', id: u.id })}
-                        disabled={processingUserId === u.id || ['baye@gmail.com', 'kobarbayedame6@gmail.com'].includes(u.email)}
-                        className="p-2 bg-slate-100 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all disabled:opacity-30 opacity-0 group-hover:opacity-100"
-                        title="Supprimer l'utilisateur"
-                      >
-                        {processingUserId === u.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                      </button>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-20 text-center">
-                      <div className="flex flex-col items-center gap-3 text-slate-400">
-                        <Users size={48} className="opacity-20" />
-                        <p className="text-sm font-medium">Aucun utilisateur trouvé.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <section className={`${panelClass} p-4 sm:p-5`}>
+          <SectionHeading
+            eyebrow="À traiter"
+            title="État de la plateforme"
+            description="Éléments qui peuvent demander votre attention."
+          />
 
-          {/* Mobile Card View for Users */}
-          <div className="md:hidden divide-y divide-slate-100">
-            {filteredUsers.length > 0 ? filteredUsers.map(u => (
-              <div key={u.id} className="p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">
-                      {u.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800">{u.name}</h4>
-                      <p className="text-[10px] text-slate-500">{u.email}</p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                    u.role === 'admin' ? "bg-blue-100 text-blue-700" : 
-                    u.role === 'owner' ? "bg-emerald-100 text-emerald-700" :
-                    "bg-slate-100 text-slate-600"
-                  )}>
-                    {u.role}
-                  </span>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-2xl">
-                  <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Boutique</p>
-                  <p className="text-xs font-bold text-slate-800">{u.shopName || 'Administration'}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400">Inscrit le {new Date(u.created_at).toLocaleDateString()}</span>
-                  <button 
-                    onClick={() => setConfirmDelete({ type: 'user', id: u.id })}
-                    disabled={processingUserId === u.id || ['baye@gmail.com', 'kobarbayedame6@gmail.com'].includes(u.email)}
-                    className="p-2 bg-slate-100 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <div className="p-10 text-center text-slate-400">Aucun utilisateur trouvé</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'requests' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-lg font-bold text-slate-800">Demandes d'Abonnement Premium</h3>
-          </div>
-          <div className="overflow-x-auto hidden md:block">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Boutique / Client</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Paiement</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Statut</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {subscriptionRequests.length > 0 ? subscriptionRequests.map(req => (
-                  <tr key={req.id} className={cn("hover:bg-slate-50 transition-colors group", req.status === 'pending' && "bg-amber-50/30")}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
-                          <Store size={20} />
-                        </div>
-                        <div className="flex flex-col">
-                          <p className="font-bold text-slate-800">{req.shopName}</p>
-                          <p className="text-[10px] text-slate-500">{req.userName} • {new Date(req.created_at).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-slate-100 rounded-lg">
-                          {req.payment_method === 'wave' ? <Zap size={14} className="text-blue-500" /> : <CreditCard size={14} className="text-emerald-500" />}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-slate-700 uppercase">{req.payment_method}</span>
-                          <span className="text-[10px] text-slate-400 font-mono tracking-tighter">{req.transaction_ref}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                        req.status === 'pending' ? "bg-amber-50 text-amber-600 border-amber-200" : 
-                        req.status === 'approved' ? "bg-emerald-50 text-emerald-600 border-emerald-200" : 
-                        "bg-red-50 text-red-600 border-red-200"
-                      )}>
-                        {req.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {req.status === 'pending' && (
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleApprove(req.id)} className="px-4 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all">Approuver</button>
-                          <button onClick={() => handleReject(req.id)} className="p-2 bg-slate-100 text-slate-400 hover:text-red-600 rounded-xl transition-all"><X size={16} /></button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-20 text-center">
-                      <div className="flex flex-col items-center gap-3 text-slate-400">
-                        <CreditCard size={48} className="opacity-20" />
-                        <p className="text-sm font-medium">Aucune demande d'abonnement.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Card View for Subscription Requests */}
-          <div className="md:hidden divide-y divide-slate-100">
-            {subscriptionRequests.length > 0 ? subscriptionRequests.map(req => (
-              <div key={req.id} className={cn("p-4 space-y-4", req.status === 'pending' && "bg-amber-50/30")}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400">
-                      <Store size={20} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800">{req.shopName}</h4>
-                      <p className="text-[10px] text-slate-500">{req.userName}</p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                    req.status === 'pending' ? "bg-amber-50 text-amber-600 border-amber-200" : 
-                    req.status === 'approved' ? "bg-emerald-50 text-emerald-600 border-emerald-200" : 
-                    "bg-red-50 text-red-600 border-red-200"
-                  )}>
-                    {req.status}
-                  </span>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-2xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white rounded-lg shadow-sm">
-                      {req.payment_method === 'wave' ? <Zap size={14} className="text-blue-500" /> : <CreditCard size={14} className="text-emerald-500" />}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700 uppercase">{req.payment_method}</p>
-                      <p className="text-[10px] text-slate-400 font-mono">{req.transaction_ref}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-slate-400">{new Date(req.created_at).toLocaleDateString()}</span>
-                </div>
-                {req.status === 'pending' && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleApprove(req.id)} className="flex-1 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-100">Approuver</button>
-                    <button onClick={() => handleReject(req.id)} className="p-2 bg-slate-100 text-slate-400 rounded-xl"><X size={18} /></button>
-                  </div>
-                )}
-              </div>
-            )) : (
-              <div className="p-10 text-center text-slate-400">Aucune demande trouvée</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'broadcast' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
-            <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-              <MessageSquare className="text-emerald-600" />
-              Diffuser un Message
-            </h3>
-            
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Cible du message</label>
-                <select 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500 text-slate-800"
-                  value={broadcastTarget}
-                  onChange={(e) => setBroadcastTarget(e.target.value)}
-                >
-                  <option value="all">Tous les utilisateurs (Global)</option>
-                  {shops.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Titre de l'annonce</label>
-                <input 
-                  type="text" 
-                  placeholder="Ex: Nouvelle mise à jour disponible !"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500 text-slate-800"
-                  value={broadcastTitle}
-                  onChange={(e) => setBroadcastTitle(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Message</label>
-                <textarea 
-                  rows={5}
-                  placeholder="Écrivez votre message ici..."
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500 resize-none text-slate-800"
-                  value={broadcastMessage}
-                  onChange={(e) => setBroadcastMessage(e.target.value)}
-                />
-              </div>
-
-              <button 
-                onClick={handleSendBroadcast}
-                disabled={sendingBroadcast || !broadcastTitle || !broadcastMessage}
-                className="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {sendingBroadcast ? <Loader2 className="animate-spin" /> : <Send size={20} />}
-                Envoyer le message
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-blue-600 p-8 rounded-3xl text-white shadow-xl relative overflow-hidden">
-              <div className="relative z-10">
-                <h3 className="text-xl font-bold mb-2">Conseils d'Admin</h3>
-                <p className="text-blue-100 text-sm">
-                  Utilisez les messages globaux pour informer les utilisateurs des maintenances ou des nouvelles fonctionnalités Premium.
-                </p>
-              </div>
-              <ShieldCheck size={120} className="absolute -right-8 -bottom-8 text-white/10" />
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-              <h4 className="font-bold text-slate-800 mb-4">Historique des Diffusions</h4>
-              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {broadcastHistory.length > 0 ? broadcastHistory.map(b => (
-                  <div key={b.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                        {b.type}
-                      </span>
-                      <span className="text-[10px] text-slate-400">{new Date(b.created_at).toLocaleDateString()}</span>
-                    </div>
-                    <h5 className="text-sm font-bold text-slate-800 mb-1">{b.title}</h5>
-                    <p className="text-xs text-slate-500 line-clamp-2">{b.message}</p>
-                    <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1">
-                      <Globe size={10} /> {b.shopName || 'Tous les utilisateurs'}
-                    </div>
-                  </div>
-                )) : (
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                      <Clock size={14} />
-                    </div>
-                    <p className="text-slate-600">Aucun historique de diffusion.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {activeTab === 'logs' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <h3 className="text-lg font-bold text-slate-800">Journaux d'Audit Système</h3>
-            <button 
-              onClick={() => exportToCSV(logs, 'audit_logs')}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-emerald-50 hover:text-emerald-600 transition-all w-fit"
+          <div className="space-y-3">
+            <button
+              onClick={() => setActiveTab('requests')}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-amber-200 hover:bg-amber-50"
             >
-              <Download size={14} />
+              <span className="flex items-center gap-3">
+                <span className="rounded-lg bg-amber-100 p-2 text-amber-700">
+                  <Clock size={17} />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-slate-800">
+                    Demandes en attente
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    Abonnements à vérifier
+                  </span>
+                </span>
+              </span>
+              <span className="rounded-full bg-white px-2.5 py-1 text-sm font-extrabold text-amber-700">
+                {pendingCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('shops')}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-red-200 hover:bg-red-50"
+            >
+              <span className="flex items-center gap-3">
+                <span className="rounded-lg bg-red-100 p-2 text-red-700">
+                  <AlertTriangle size={17} />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-slate-800">
+                    Boutiques signalées
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    À consulter dans la liste
+                  </span>
+                </span>
+              </span>
+              <span className="rounded-full bg-white px-2.5 py-1 text-sm font-extrabold text-red-700">
+                {flaggedCount}
+              </span>
+            </button>
+
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+              <p className="flex items-center gap-2 text-sm font-bold text-[#044598]">
+                <ShieldCheck size={17} />
+                Vue d’administration
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                Les chiffres et listes affichés proviennent des données chargées
+                depuis la plateforme.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setActiveTab('broadcast')}
+              className="flex items-center justify-center gap-2 rounded-xl bg-[#044598] px-3 py-2.5 text-xs font-bold text-white transition hover:bg-[#033875]"
+            >
+              <Send size={15} />
+              Diffuser
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Settings size={15} />
+              Réglages
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className={`${panelClass} p-4 sm:p-5`}>
+          <SectionHeading title="Derniers utilisateurs" />
+          <div className="space-y-2">
+            {stats?.recentUsers?.length ? (
+              stats.recentUsers.slice(0, 5).map((user: any) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 font-bold text-[#044598]">
+                      {user.name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-800">
+                        {user.name || 'Utilisateur'}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        {user.shopName || 'Sans boutique'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[10px] text-slate-400">
+                    {user.created_at
+                      ? new Date(user.created_at).toLocaleDateString('fr-FR')
+                      : ''}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <EmptyState icon={Users} title="Aucun utilisateur récent" />
+            )}
+          </div>
+        </section>
+
+        <section className={`${panelClass} p-4 sm:p-5`}>
+          <SectionHeading title="Derniers abonnements" />
+          <div className="space-y-2">
+            {stats?.recentSubscriptions?.length ? (
+              stats.recentSubscriptions.slice(0, 5).map((subscription: any) => (
+                <div
+                  key={subscription.id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
+                      <Zap size={17} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-800">
+                        {subscription.shopName || 'Boutique'}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        {subscription.userName || 'Utilisateur'}
+                        {subscription.payment_method
+                          ? ` · ${subscription.payment_method}`
+                          : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[10px] text-slate-400">
+                    {subscription.created_at
+                      ? new Date(subscription.created_at).toLocaleDateString('fr-FR')
+                      : ''}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <EmptyState icon={CreditCard} title="Aucun abonnement récent" />
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
+  const renderShops = () => (
+    <div>
+      <SectionHeading
+        eyebrow="Comptes boutiques"
+        title="Boutiques"
+        description={`${filteredShops.length} boutique(s) affichée(s).`}
+        action={
+          <button
+            onClick={() => exportToCSV(shops, 'boutiques-export')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Download size={15} />
+            Exporter CSV
+          </button>
+        }
+      />
+
+      <label className="relative mb-4 block max-w-md">
+        <Search
+          size={17}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          className={`${inputClass} pl-10`}
+          placeholder="Rechercher une boutique…"
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+        />
+      </label>
+
+      {filteredShops.length ? (
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          {filteredShops.map((shop) => (
+            <motion.article
+              key={shop.id}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={cn(
+                `${panelClass} p-4`,
+                shop.status === 'blocked' && 'border-red-200 bg-red-50/40',
+                shop.is_signaled && 'border-amber-200',
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg font-extrabold text-[#044598]">
+                    {shop.name?.charAt(0)?.toUpperCase() || <Store size={20} />}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-bold text-slate-900">
+                      {shop.name || 'Boutique sans nom'}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Créée le{' '}
+                      {shop.created_at
+                        ? new Date(shop.created_at).toLocaleDateString('fr-FR')
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {shop.is_signaled && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                    <AlertTriangle size={12} />
+                    Signalée
+                  </span>
+                )}
+              </div>
+
+              <div className="my-4 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                    Formule
+                  </p>
+                  <p className="mt-1 text-xs font-bold text-slate-800">
+                    {shop.plan === 'premium' ? 'Premium' : 'Gratuite'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                    Membres
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-xs font-bold text-slate-800">
+                    <Users size={13} />
+                    {shop.userCount ?? 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                    Produits
+                  </p>
+                  <p className="mt-1 flex items-center gap-1 text-xs font-bold text-slate-800">
+                    <Package size={13} />
+                    {shop.productCount ?? 0}
+                  </p>
+                </div>
+              </div>
+
+              {shop.plan === 'premium' && shop.subscription_expires_at && (
+                <div className="mb-3">
+                  <SubscriptionTimer
+                    expiresAt={shop.subscription_expires_at}
+                    plan={shop.plan}
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                    Ventes
+                  </p>
+                  <p className="text-sm font-extrabold text-[#044598]">
+                    {formatCurrency(shop.totalSales || 0, currentUser?.currency)}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => void handleSignalShop(shop.id, !!shop.is_signaled)}
+                    disabled={processingShopId === shop.id}
+                    title={shop.is_signaled ? 'Retirer le signalement' : 'Signaler'}
+                    className={cn(
+                      'rounded-lg p-2 transition hover:bg-amber-50 hover:text-amber-700 disabled:opacity-50',
+                      shop.is_signaled
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'bg-slate-100 text-slate-500',
+                    )}
+                  >
+                    {processingShopId === shop.id ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <AlertTriangle size={16} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => void handleBlockShop(shop.id, shop.status)}
+                    disabled={processingShopId === shop.id}
+                    title={shop.status === 'blocked' ? 'Débloquer' : 'Bloquer'}
+                    className={cn(
+                      'rounded-lg p-2 transition disabled:opacity-50',
+                      shop.status === 'blocked'
+                        ? 'bg-blue-50 text-[#044598] hover:bg-blue-100'
+                        : 'bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600',
+                    )}
+                  >
+                    {shop.status === 'blocked' ? (
+                      <Unlock size={16} />
+                    ) : (
+                      <Ban size={16} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ type: 'shop', id: shop.id })}
+                    title="Supprimer la boutique"
+                    className="rounded-lg bg-slate-100 p-2 text-slate-500 transition hover:bg-red-600 hover:text-white"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {shop.status === 'blocked' && (
+                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  Cette boutique est bloquée.
+                </p>
+              )}
+            </motion.article>
+          ))}
+        </div>
+      ) : (
+        <div className={panelClass}>
+          <EmptyState
+            icon={Store}
+            title="Aucune boutique trouvée"
+            description="Essaie un autre nom dans la recherche."
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderUsers = () => (
+    <div>
+      <SectionHeading
+        eyebrow="Comptes de la plateforme"
+        title="Utilisateurs"
+        description={`${filteredUsers.length} utilisateur(s) affiché(s).`}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowAddAdminModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#044598] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#033875]"
+            >
+              <UserPlus size={15} />
+              Ajouter un admin
+            </button>
+            <button
+              onClick={() => exportToCSV(users, 'utilisateurs')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Download size={15} />
               Exporter CSV
             </button>
           </div>
-          <div className="overflow-x-auto hidden md:block">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50">
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Date</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Admin</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Action</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Détails</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">IP</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {logs.length > 0 ? logs.map(log => (
-                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">
-                      {new Date(log.created_at).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-700">{log.userName}</span>
-                        <span className="text-[10px] text-slate-500">{log.userEmail}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                        log.action.includes('DELETE') ? "bg-red-50 text-red-600" :
-                        log.action.includes('APPROVE') ? "bg-emerald-50 text-emerald-600" :
-                        "bg-blue-50 text-blue-600"
-                      )}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-slate-600 max-w-xs truncate">
-                      {log.details}
-                    </td>
-                    <td className="px-6 py-4 text-[10px] font-mono text-slate-400">
-                      {log.ip_address}
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-20 text-center">
-                      <div className="flex flex-col items-center gap-3 text-slate-400">
-                        <Terminal size={48} className="opacity-20" />
-                        <p className="text-sm font-medium">Aucun journal d'audit disponible.</p>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        }
+      />
 
-          {/* Mobile Card View for Logs */}
-          <div className="md:hidden divide-y divide-slate-100">
-            {logs.length > 0 ? logs.map(log => (
-              <div key={log.id} className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-700">{log.userName}</span>
-                    <span className="text-[10px] text-slate-500">{log.userEmail}</span>
+      <label className="relative mb-4 block max-w-md">
+        <Search
+          size={17}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          className={`${inputClass} pl-10`}
+          placeholder="Rechercher un nom ou un email…"
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+        />
+      </label>
+
+      {filteredUsers.length ? (
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          {filteredUsers.map((user) => {
+            const protectedAccount = [
+              'baye@gmail.com',
+              'kobarbayedame6@gmail.com',
+            ].includes(user.email);
+
+            return (
+              <motion.article
+                key={user.id}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`${panelClass} p-4`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 font-extrabold text-[#044598]">
+                      {user.name?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-bold text-slate-900">
+                        {user.name || 'Utilisateur'}
+                      </h3>
+                      <p className="truncate text-xs text-slate-500">
+                        {user.email}
+                      </p>
+                    </div>
                   </div>
-                  <span className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                    log.action.includes('DELETE') ? "bg-red-50 text-red-600" :
-                    log.action.includes('APPROVE') ? "bg-emerald-50 text-emerald-600" :
-                    "bg-blue-50 text-blue-600"
-                  )}>
-                    {log.action}
+
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase',
+                      user.role === 'admin'
+                        ? 'bg-blue-50 text-[#044598]'
+                        : user.role === 'owner'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-slate-100 text-slate-600',
+                    )}
+                  >
+                    {user.role}
                   </span>
                 </div>
-                <div className="bg-slate-50 p-3 rounded-2xl">
-                  <p className="text-xs text-slate-600 leading-relaxed">{log.details}</p>
+
+                <div className="my-4 rounded-xl bg-slate-50 p-3">
+                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                    Boutique
+                  </p>
+                  <p className="mt-1 truncate text-sm font-bold text-slate-800">
+                    {user.shopName || 'Administration'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Inscrit le{' '}
+                    {user.created_at
+                      ? new Date(user.created_at).toLocaleDateString('fr-FR')
+                      : '—'}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-400">
-                  <span>{new Date(log.created_at).toLocaleString()}</span>
-                  <span className="font-mono">{log.ip_address}</span>
+
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-slate-400">
+                    ID boutique : {user.shop_id || '—'}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setConfirmDelete({ type: 'user', id: user.id })
+                    }
+                    disabled={protectedAccount}
+                    title={
+                      protectedAccount
+                        ? 'Ce compte est protégé'
+                        : 'Supprimer cet utilisateur'
+                    }
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Trash2 size={14} />
+                    Supprimer
+                  </button>
                 </div>
-              </div>
-            )) : (
-              <div className="p-10 text-center text-slate-400">Aucun log trouvé</div>
-            )}
-          </div>
+              </motion.article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={panelClass}>
+          <EmptyState
+            icon={Users}
+            title="Aucun utilisateur trouvé"
+            description="Essaie un autre nom ou email dans la recherche."
+          />
         </div>
       )}
+    </div>
+  );
 
-      {activeTab === 'settings' && (
-        <div className="max-w-2xl mx-auto lg:mx-0 bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm">
-          <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-            <SettingsIcon className="text-slate-600" />
-            Paramètres de la Plateforme
-          </h3>
-          
-          <div className="space-y-6">
-            <div className="p-4 md:p-6 bg-slate-50 rounded-2xl border border-slate-100">
-              <h4 className="font-bold text-slate-800 mb-4">Coordonnées de Paiement</h4>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Numéro Wave / OM</label>
-                  <input 
-                    type="text" 
-                    value={platformSettings.payment_number}
-                    onChange={(e) => setPlatformSettings({...platformSettings, payment_number: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Ce numéro est affiché aux clients pour les abonnements manuels.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Email de Support</label>
-                  <input 
-                    type="email" 
-                    value={platformSettings.support_email}
-                    onChange={(e) => setPlatformSettings({...platformSettings, support_email: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Email d'Alerte Admin</label>
-                  <input 
-                    type="email" 
-                    value={platformSettings.admin_alert_email}
-                    onChange={(e) => setPlatformSettings({...platformSettings, admin_alert_email: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-emerald-500"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">Cet email recevra les alertes système importantes.</p>
-                </div>
-              </div>
-            </div>
+  const renderRequests = () => (
+    <div>
+      <SectionHeading
+        eyebrow="Paiements"
+        title="Demandes d’abonnement"
+        description={`${pendingCount} demande(s) à vérifier.`}
+      />
 
-            <div className="p-4 md:p-6 bg-slate-50 rounded-2xl border border-slate-100">
-              <h4 className="font-bold text-slate-800 mb-4">Maintenance</h4>
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-bold text-slate-700">Mode Maintenance</p>
-                  <p className="text-xs text-slate-500">Empêcher l'accès aux boutiques pendant les mises à jour.</p>
-                </div>
-                <div 
-                  onClick={() => setPlatformSettings({...platformSettings, maintenance_mode: platformSettings.maintenance_mode === 'true' ? 'false' : 'true'})}
-                  className={cn(
-                    "w-12 h-6 rounded-full relative cursor-pointer transition-colors shrink-0",
-                    platformSettings.maintenance_mode === 'true' ? "bg-red-500" : "bg-slate-200"
-                  )}
-                >
-                  <div className={cn(
-                    "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
-                    platformSettings.maintenance_mode === 'true' ? "left-7" : "left-1"
-                  )}></div>
-                </div>
-              </div>
-            </div>
+      {subscriptionRequests.length ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {subscriptionRequests.map((request) => {
+            const pending = request.status === 'pending';
+            const approved = request.status === 'approved';
 
-            <button 
-              onClick={handleSaveSettings}
-              className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl shadow-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2"
+            return (
+              <motion.article
+                key={request.id}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  `${panelClass} p-4`,
+                  pending && 'border-amber-200',
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      className={cn(
+                        'rounded-xl p-3',
+                        pending
+                          ? 'bg-amber-50 text-amber-700'
+                          : approved
+                            ? 'bg-blue-50 text-[#044598]'
+                            : 'bg-red-50 text-red-600',
+                      )}
+                    >
+                      <Store size={19} />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-bold text-slate-900">
+                        {request.shopName || 'Boutique'}
+                      </h3>
+                      <p className="truncate text-xs text-slate-500">
+                        {request.userName || 'Utilisateur'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase',
+                      pending
+                        ? 'bg-amber-50 text-amber-700'
+                        : approved
+                          ? 'bg-blue-50 text-[#044598]'
+                          : 'bg-red-50 text-red-700',
+                    )}
+                  >
+                    {request.status}
+                  </span>
+                </div>
+
+                <div className="my-4 grid gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase text-slate-400">
+                      Moyen de paiement
+                    </p>
+                    <p className="mt-1 flex items-center gap-2 text-sm font-bold capitalize text-slate-800">
+                      {request.payment_method === 'wave' ? (
+                        <Zap size={14} className="text-blue-600" />
+                      ) : (
+                        <CreditCard size={14} className="text-[#044598]" />
+                      )}
+                      {request.payment_method || '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase text-slate-400">
+                      Date de demande
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {request.created_at
+                        ? new Date(request.created_at).toLocaleString('fr-FR')
+                        : '—'}
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-[10px] font-semibold uppercase text-slate-400">
+                      Référence de transaction
+                    </p>
+                    <p className="mt-1 break-all font-mono text-xs text-slate-700">
+                      {request.transaction_ref || 'Non renseignée'}
+                    </p>
+                  </div>
+                </div>
+
+                {pending && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => void handleApprove(request.id)}
+                      disabled={processingId === request.id}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#044598] px-3 py-2.5 text-sm font-bold text-white transition hover:bg-[#033875] disabled:opacity-50"
+                    >
+                      {processingId === request.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Check size={16} />
+                      )}
+                      Approuver
+                    </button>
+                    <button
+                      onClick={() => void handleReject(request.id)}
+                      disabled={processingId === request.id}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    >
+                      {processingId === request.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <X size={16} />
+                      )}
+                      Refuser
+                    </button>
+                  </div>
+                )}
+              </motion.article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={panelClass}>
+          <EmptyState
+            icon={CreditCard}
+            title="Aucune demande d’abonnement"
+            description="Les nouvelles demandes apparaîtront ici."
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderBroadcast = () => (
+    <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
+      <section className={`${panelClass} p-4 sm:p-5`}>
+        <SectionHeading
+          eyebrow="Communication"
+          title="Envoyer un message"
+          description="Choisis les destinataires puis rédige ton annonce."
+        />
+
+        <div className="space-y-4">
+          <label className="block text-sm font-semibold text-slate-700">
+            Destinataires
+            <select
+              className={`${inputClass} mt-1.5`}
+              value={broadcastTarget}
+              onChange={(event) => setBroadcastTarget(event.target.value)}
             >
-              <Save size={20} />
-              Enregistrer les modifications
+              <option value="all">Tous les utilisateurs</option>
+              {shops.map((shop) => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block text-sm font-semibold text-slate-700">
+            Titre
+            <input
+              className={`${inputClass} mt-1.5`}
+              placeholder="Ex. Une mise à jour est disponible"
+              value={broadcastTitle}
+              onChange={(event) => setBroadcastTitle(event.target.value)}
+            />
+          </label>
+
+          <label className="block text-sm font-semibold text-slate-700">
+            Message
+            <textarea
+              rows={5}
+              className={`${inputClass} mt-1.5 resize-y`}
+              placeholder="Écris ton message ici…"
+              value={broadcastMessage}
+              onChange={(event) => setBroadcastMessage(event.target.value)}
+            />
+          </label>
+
+          <button
+            onClick={() => void handleSendBroadcast()}
+            disabled={
+              sendingBroadcast ||
+              !broadcastTitle.trim() ||
+              !broadcastMessage.trim()
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#044598] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#033875] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {sendingBroadcast ? (
+              <Loader2 size={17} className="animate-spin" />
+            ) : (
+              <Send size={17} />
+            )}
+            Envoyer le message
+          </button>
+        </div>
+      </section>
+
+      <section className={`${panelClass} p-4 sm:p-5`}>
+        <SectionHeading
+          eyebrow="Messages envoyés"
+          title="Historique"
+          description="Retrouve les annonces déjà diffusées."
+        />
+
+        <div className="max-h-[620px] space-y-2 overflow-y-auto pr-1">
+          {broadcastHistory.length ? (
+            broadcastHistory.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase text-[#044598]">
+                    {item.type || 'Annonce'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {item.created_at
+                      ? new Date(item.created_at).toLocaleDateString('fr-FR')
+                      : ''}
+                  </span>
+                </div>
+                <h3 className="mt-2 text-sm font-bold text-slate-800">
+                  {item.title}
+                </h3>
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
+                  {item.message}
+                </p>
+                <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+                  <Globe size={12} />
+                  {item.shopName || 'Tous les utilisateurs'}
+                </p>
+              </article>
+            ))
+          ) : (
+            <EmptyState
+              icon={MessageSquare}
+              title="Aucun message envoyé"
+              description="L’historique s’affichera après ta première diffusion."
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+
+  const renderLogs = () => (
+    <div>
+      <SectionHeading
+        eyebrow="Suivi"
+        title="Journal d’audit"
+        description={`${logs.length} événement(s) enregistré(s).`}
+        action={
+          <button
+            onClick={() => exportToCSV(logs, 'audit_logs')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Download size={15} />
+            Exporter CSV
+          </button>
+        }
+      />
+
+      {logs.length ? (
+        <div className="space-y-2">
+          {logs.map((log) => {
+            const isDelete = log.action?.includes('DELETE');
+            const isApproval = log.action?.includes('APPROVE');
+
+            return (
+              <motion.article
+                key={log.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`${panelClass} p-3 sm:p-4`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
+                      className={cn(
+                        'rounded-lg p-2',
+                        isDelete
+                          ? 'bg-red-50 text-red-600'
+                          : isApproval
+                            ? 'bg-blue-50 text-[#044598]'
+                            : 'bg-slate-100 text-slate-600',
+                      )}
+                    >
+                      <Terminal size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <span
+                        className={cn(
+                          'inline-flex rounded-full px-2 py-1 text-[10px] font-bold uppercase',
+                          isDelete
+                            ? 'bg-red-50 text-red-700'
+                            : isApproval
+                              ? 'bg-blue-50 text-[#044598]'
+                              : 'bg-slate-100 text-slate-600',
+                        )}
+                      >
+                        {log.action}
+                      </span>
+                      <p className="mt-2 break-words text-sm text-slate-700">
+                        {log.details || 'Aucun détail'}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {log.userName || 'Administrateur'} · {log.userEmail || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-semibold text-slate-600">
+                      {log.created_at
+                        ? new Date(log.created_at).toLocaleString('fr-FR')
+                        : '—'}
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-slate-400">
+                      {log.ip_address || ''}
+                    </p>
+                  </div>
+                </div>
+              </motion.article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={panelClass}>
+          <EmptyState
+            icon={Terminal}
+            title="Aucun journal disponible"
+            description="Les événements d’administration apparaîtront ici."
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSettings = () => (
+    <div className="max-w-3xl">
+      <SectionHeading
+        eyebrow="Configuration"
+        title="Paramètres de la plateforme"
+        description="Coordonnées de paiement, support et maintenance."
+      />
+
+      <div className="space-y-4">
+        <section className={`${panelClass} p-4 sm:p-5`}>
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-xl bg-blue-50 p-2.5 text-[#044598]">
+              <CreditCard size={19} />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900">Coordonnées</h3>
+              <p className="text-xs text-slate-500">
+                Informations montrées pour le paiement et le support.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-semibold text-slate-700">
+              Numéro Wave / Orange Money
+              <input
+                className={`${inputClass} mt-1.5`}
+                value={platformSettings.payment_number || ''}
+                onChange={(event) =>
+                  setPlatformSettings({
+                    ...platformSettings,
+                    payment_number: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <label className="text-sm font-semibold text-slate-700">
+              Email du support
+              <input
+                type="email"
+                className={`${inputClass} mt-1.5`}
+                value={platformSettings.support_email || ''}
+                onChange={(event) =>
+                  setPlatformSettings({
+                    ...platformSettings,
+                    support_email: event.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Email d’alerte administrateur
+              <input
+                type="email"
+                className={`${inputClass} mt-1.5`}
+                value={platformSettings.admin_alert_email || ''}
+                onChange={(event) =>
+                  setPlatformSettings({
+                    ...platformSettings,
+                    admin_alert_email: event.target.value,
+                  })
+                }
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-400">
+                Adresse qui reçoit les alertes système importantes.
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section className={`${panelClass} p-4 sm:p-5`}>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-amber-50 p-2.5 text-amber-700">
+                <Settings size={19} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900">Mode maintenance</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Empêcher l’accès aux boutiques pendant une intervention.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={platformSettings.maintenance_mode === 'true'}
+              onClick={() =>
+                setPlatformSettings({
+                  ...platformSettings,
+                  maintenance_mode:
+                    platformSettings.maintenance_mode === 'true'
+                      ? 'false'
+                      : 'true',
+                })
+              }
+              className={cn(
+                'relative h-7 w-12 shrink-0 rounded-full transition-colors',
+                platformSettings.maintenance_mode === 'true'
+                  ? 'bg-red-500'
+                  : 'bg-slate-300',
+              )}
+            >
+              <motion.span
+                animate={{
+                  x: platformSettings.maintenance_mode === 'true' ? 21 : 3,
+                }}
+                className="absolute left-0 top-1 h-5 w-5 rounded-full bg-white shadow"
+              />
             </button>
           </div>
-        </div>
-      )}
 
-      {/* Add Admin Modal */}
-      {showAddAdminModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Shield className="text-blue-600" />
-                Nouvel Administrateur
-              </h3>
-              <button onClick={() => setShowAddAdminModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                <X size={20} className="text-slate-400" />
-              </button>
+          {platformSettings.maintenance_mode === 'true' && (
+            <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              Le mode maintenance est activé. Pense à enregistrer les modifications.
+            </p>
+          )}
+        </section>
+
+        <button
+          onClick={() => void handleSaveSettings()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#044598] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#033875] sm:w-auto"
+        >
+          <CheckCircle2 size={17} />
+          Enregistrer les paramètres
+        </button>
+      </div>
+    </div>
+  );
+
+  const activeContent = {
+    overview: renderOverview,
+    shops: renderShops,
+    users: renderUsers,
+    requests: renderRequests,
+    broadcast: renderBroadcast,
+    logs: renderLogs,
+    settings: renderSettings,
+  }[activeTab]();
+
+  return (
+    <div className="mx-auto max-w-[1500px] space-y-5 pb-6">
+      <header className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#044598]">
+              <ShieldCheck size={14} />
+              MaCaisse · Console admin
             </div>
-            <form onSubmit={handleCreateAdmin} className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Nom Complet</label>
-                <div className="relative">
-                  <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input 
-                    type="text" 
-                    required
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-blue-500 transition-all"
-                    placeholder="Prénom Nom"
-                    value={newAdminData.name}
-                    onChange={(e) => setNewAdminData({ ...newAdminData, name: e.target.value })}
-                  />
-                </div>
-              </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+              Administration
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Gérez la plateforme et suivez son activité.
+            </p>
+          </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input 
-                    type="email" 
-                    required
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-blue-500 transition-all"
-                    placeholder="admin@shopmaster.pro"
-                    value={newAdminData.email}
-                    onChange={(e) => setNewAdminData({ ...newAdminData, email: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Mot de passe</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input 
-                    type="password" 
-                    required
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-transparent outline-none focus:border-blue-500 transition-all"
-                    placeholder="••••••••"
-                    value={newAdminData.password}
-                    onChange={(e) => setNewAdminData({ ...newAdminData, password: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setShowAddAdminModal(false)}
-                  className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-all"
-                >
-                  Annuler
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isCreatingAdmin}
-                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isCreatingAdmin ? <Loader2 className="animate-spin" size={20} /> : <Shield size={20} />}
-                  Créer l'Admin
-                </button>
-              </div>
-            </form>
+          <div className="flex items-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm sm:self-auto">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-blue-600" />
+            Console active
           </div>
         </div>
-      )}
-      {/* Confirm Delete Modal */}
-      <ConfirmModal 
+
+        <nav
+          aria-label="Sections d’administration"
+          className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm"
+        >
+          <div className="flex min-w-max gap-1">
+            {tabs.map(({ id, label, icon: Icon }) => {
+              const active = activeTab === id;
+
+              return (
+                <motion.button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setActiveTab(id);
+                  }}
+                  whileTap={{ scale: 0.97 }}
+                  className={cn(
+                    'relative flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors sm:px-4 sm:text-sm',
+                    active
+                      ? 'text-white'
+                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900',
+                  )}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="macaisse-admin-active-tab"
+                      className="absolute inset-0 rounded-xl bg-[#044598]"
+                      transition={{
+                        type: 'spring',
+                        stiffness: 380,
+                        damping: 32,
+                      }}
+                    />
+                  )}
+                  <Icon size={16} className="relative z-10 shrink-0" />
+                  <span className="relative z-10">{label}</span>
+                  {id === 'requests' && pendingCount > 0 && (
+                    <span
+                      className={cn(
+                        'relative z-10 rounded-full px-1.5 py-0.5 text-[9px] font-extrabold',
+                        active
+                          ? 'bg-white/20 text-white'
+                          : 'bg-amber-100 text-amber-800',
+                      )}
+                    >
+                      {pendingCount}
+                    </span>
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+        </nav>
+      </header>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -5 }}
+          transition={{ duration: 0.18 }}
+        >
+          {activeContent}
+        </motion.div>
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAddAdminModal && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              aria-label="Fermer la fenêtre"
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+              onClick={() => setShowAddAdminModal(false)}
+            />
+
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-admin-title"
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              className="relative max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+            >
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#044598]">
+                    Comptes sécurisés
+                  </p>
+                  <h2
+                    id="add-admin-title"
+                    className="mt-1 text-xl font-extrabold text-slate-900"
+                  >
+                    Nouvel administrateur
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddAdminModal(false)}
+                  aria-label="Fermer"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateAdmin} className="space-y-4">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Nom complet
+                  <span className="relative mt-1.5 block">
+                    <Users
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      type="text"
+                      required
+                      autoComplete="name"
+                      className={`${inputClass} pl-10`}
+                      placeholder="Prénom Nom"
+                      value={newAdminData.name}
+                      onChange={(event) =>
+                        setNewAdminData({
+                          ...newAdminData,
+                          name: event.target.value,
+                        })
+                      }
+                    />
+                  </span>
+                </label>
+
+                <label className="block text-sm font-semibold text-slate-700">
+                  Email
+                  <span className="relative mt-1.5 block">
+                    <Mail
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      type="email"
+                      required
+                      autoComplete="email"
+                      className={`${inputClass} pl-10`}
+                      placeholder="admin@domaine.com"
+                      value={newAdminData.email}
+                      onChange={(event) =>
+                        setNewAdminData({
+                          ...newAdminData,
+                          email: event.target.value,
+                        })
+                      }
+                    />
+                  </span>
+                </label>
+
+                <label className="block text-sm font-semibold text-slate-700">
+                  Mot de passe
+                  <span className="relative mt-1.5 block">
+                    <Lock
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      type="password"
+                      required
+                      autoComplete="new-password"
+                      className={`${inputClass} pl-10`}
+                      placeholder="Choisir un mot de passe"
+                      value={newAdminData.password}
+                      onChange={(event) =>
+                        setNewAdminData({
+                          ...newAdminData,
+                          password: event.target.value,
+                        })
+                      }
+                    />
+                  </span>
+                </label>
+
+                <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddAdminModal(false)}
+                    className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreatingAdmin}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#044598] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#033875] disabled:opacity-50"
+                  >
+                    {isCreatingAdmin ? (
+                      <Loader2 size={17} className="animate-spin" />
+                    ) : (
+                      <Shield size={17} />
+                    )}
+                    Créer le compte
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmModal
         isOpen={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => {
-          if (confirmDelete?.type === 'shop') handleDeleteShop(confirmDelete.id);
-          else if (confirmDelete?.type === 'user') handleDeleteUser(confirmDelete.id);
+          if (confirmDelete?.type === 'shop') {
+            void handleDeleteShop(confirmDelete.id);
+          } else if (confirmDelete?.type === 'user') {
+            void handleDeleteUser(confirmDelete.id);
+          }
         }}
         loading={isDeleting}
-        title={confirmDelete?.type === 'shop' ? "Supprimer la boutique" : "Supprimer l'utilisateur"}
-        message={confirmDelete?.type === 'shop' 
-          ? "ATTENTION: Cette action supprimera DÉFINITIVEMENT la boutique et TOUTES ses données (produits, ventes, utilisateurs). Cette action est irréversible." 
-          : "Voulez-vous vraiment supprimer cet utilisateur ? Cette action est irréversible."}
+        title={
+          confirmDelete?.type === 'shop'
+            ? 'Supprimer la boutique'
+            : "Supprimer l’utilisateur"
+        }
+        message={
+          confirmDelete?.type === 'shop'
+            ? 'Cette action supprimera définitivement la boutique et ses données (produits, ventes et utilisateurs). Elle est irréversible.'
+            : 'Voulez-vous vraiment supprimer cet utilisateur ? Cette action est irréversible.'
+        }
       />
     </div>
   );

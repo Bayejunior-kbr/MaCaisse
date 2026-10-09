@@ -1,3 +1,4 @@
+import { motion } from 'motion/react';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -33,24 +34,34 @@ import { GoogleGenAI } from "@google/genai";
 import { getCleanApiKey } from '../lib/gemini-config';
 
 const StatCard = ({ title, value, icon: Icon, color, trend, trendValue }: any) => (
-  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-    <div className="flex items-start justify-between mb-4">
-      <div className={cn("p-3 rounded-2xl", color)}>
-        <Icon size={24} className="text-white" />
+  <motion.div
+    initial={{ opacity: 0, y: 12 }}
+    animate={{ opacity: 1, y: 0 }}
+    whileHover={{ y: -3 }}
+    transition={{ duration: 0.25 }}
+    className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+  >
+    <div className="mb-3 flex items-start justify-between">
+      <div className={cn('rounded-xl p-2.5', color)}>
+        <Icon size={21} className="text-white" />
       </div>
+
       {trend && (
-        <div className={cn(
-          "flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full",
-          trend === 'up' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-        )}>
+        <div
+          className={cn(
+            'flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold',
+            trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600',
+          )}
+        >
           {trend === 'up' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
           {trendValue}
         </div>
       )}
     </div>
-    <h3 className="text-slate-500 text-sm font-medium mb-1">{title}</h3>
-    <p className="text-2xl font-bold text-slate-800">{value}</p>
-  </div>
+
+    <h3 className="mb-1 text-sm font-medium text-slate-500">{title}</h3>
+    <p className="text-xl font-bold text-slate-800 sm:text-2xl">{value}</p>
+  </motion.div>
 );
 
 export default function Dashboard() {
@@ -161,7 +172,7 @@ export default function Dashboard() {
   if (loading) return <div className="flex items-center justify-center h-full">Chargement...</div>;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {subscription?.status === 'grace_period' && (
         <div className="bg-red-50 rounded-3xl p-6 border border-red-100 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
           <div className="relative z-10">
@@ -178,20 +189,25 @@ export default function Dashboard() {
       )}
 
       {user?.plan === 'free' && subscription?.status !== 'grace_period' && (
-        <div className="bg-emerald-50 rounded-3xl p-6 border border-emerald-100 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-          <div className="relative z-10">
-            <h3 className="text-xl font-bold mb-1 flex items-center gap-2 text-emerald-900">
-              <Zap className="text-emerald-600 fill-emerald-600" size={20} />
-              Passez à ShopMaster Pro Premium
-            </h3>
-            <p className="text-emerald-700/70 text-sm">Débloquez l'IA, les rapports PDF et gérez des produits illimités.</p>
-          </div>
-          <Link to="/subscription" className="relative z-10 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-100 whitespace-nowrap">
-            En savoir plus
-          </Link>
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-600/5 blur-3xl -mr-20 -mt-20 rounded-full"></div>
-        </div>
-      )}
+  <div className="relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-brand-100 bg-brand-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <div className="relative z-10">
+      <h3 className="flex items-center gap-2 text-base font-bold text-brand-900 sm:text-lg">
+        <Zap className="shrink-0 text-brand-600" size={19} />
+        Passez à MaCaisse Premium
+      </h3>
+      <p className="mt-1 text-sm text-brand-800/80">
+        Débloquez l’IA, les rapports PDF et les produits illimités.
+      </p>
+    </div>
+
+    <Link
+      to="/subscription"
+      className="relative z-10 inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-brand-700"
+    >
+      Voir Premium
+    </Link>
+  </div>
+)}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -284,8 +300,8 @@ export default function Dashboard() {
               <AreaChart data={stats?.recentSales || []}>
                 <defs>
                   <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#044598" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#044598" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-100" />

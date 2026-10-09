@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { GoogleGenAI } from "@google/genai";
 import express from "express";
 import helmet from "helmet";

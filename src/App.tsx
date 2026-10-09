@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'motion/react';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -352,11 +353,13 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
             {user.logo_url ? (
               <img src={user.logo_url} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
             ) : (
-              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50">
-                <Store size={22} strokeWidth={2.5} />
-              </div>
+              <img
+  src="/logo.png"
+  alt="MaCaisse"
+  className="h-10 w-10 shrink-0 rounded-lg object-contain"
+/>
             )}
-            <h1 className="text-xl font-bold text-slate-800 tracking-tight">{user.shopName || "ShopMaster Pro"}</h1>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">{user.shopName || "MaCaisse"}</h1>
           </div>
           <button 
             onClick={() => setIsSidebarCollapsed(true)}
@@ -415,7 +418,9 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
  
             <div className="flex items-center gap-2">
             <span className="text-slate-400 text-sm hidden sm:inline">Boutique:</span>
-            <span className="font-semibold text-slate-800">{user.shopName}</span>
+            <span className="font-semibold text-slate-800">
+  {user.shopName || 'MaCaisse'}
+</span>
             {user.plan === 'premium' && (
               <div className="flex items-center gap-2">
                 <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Pro</span>
@@ -512,11 +517,13 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
           {user.logo_url ? (
             <img src={user.logo_url} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
           ) : (
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white">
-              <Store size={22} strokeWidth={2.5} />
-            </div>
+            <img
+  src="/logo.png"
+  alt="MaCaisse"
+  className="h-10 w-10 shrink-0 rounded-lg object-contain"
+/>
           )}
-                <h1 className="text-xl font-bold text-slate-800">{user.shopName || "ShopMaster Pro"}</h1>
+               <h1 className="text-xl font-bold text-slate-800">{user.shopName || "MaCaisse"}</h1>
               </div>
               <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-slate-400">
                 <X size={24} />
@@ -547,125 +554,75 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
   );
 };
 
-const AdminLayout = ({ children, user, onLogout }: { children: React.ReactNode, user: User, onLogout: () => void }) => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const location = useLocation();
-
+const AdminLayout = ({
+  children,
+  user,
+  onLogout,
+}: {
+  children: React.ReactNode;
+  user: User;
+  onLogout: () => void;
+}) => {
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-72 bg-white border-r border-slate-200 p-6 fixed h-full overflow-y-auto">
-        <div className="flex items-center gap-3 mb-10 px-2 shrink-0">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200/50">
-            <ShieldCheck size={22} strokeWidth={2.5} />
-          </div>
-          <h1 className="text-xl font-bold text-slate-800 tracking-tight">SmartAdmin</h1>
-        </div>
+    <div className="min-h-screen min-w-0 overflow-x-hidden bg-slate-50">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between gap-3 px-3 sm:h-16 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+           <img
+  src={user.logo_url || '/logo.png'}
+  alt="Logo MaCaisse"
+  className="h-9 w-9 shrink-0 rounded-xl object-contain sm:h-10 sm:w-10"
+/>
 
-        <nav className="flex-1 space-y-2">
-          <SidebarItem 
-            to="/admin" 
-            icon={ShieldCheck} 
-            label="Console Centrale" 
-            active={location.pathname === "/admin"} 
-            userRole={user.role}
-          />
-        </nav>
-
-        <div className="mt-auto pt-6 border-t border-slate-100 shrink-0">
-          <div className="flex items-center gap-3 px-4 py-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
-              <UserIcon size={20} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
-              <p className="text-xs text-slate-500 truncate uppercase tracking-tighter">Super Admin</p>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-extrabold text-slate-900 sm:text-base">
+                MaCaisse Admin
+              </p>
+              <p className="hidden text-[11px] text-slate-500 sm:block">
+                Gestion de la plateforme
+              </p>
             </div>
           </div>
-          <button 
-            onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
-          >
-            <LogOut size={20} />
-            <span className="font-medium">Déconnexion</span>
-          </button>
-        </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 lg:ml-72 min-h-screen flex flex-col">
-        <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-6 sticky top-0 z-30">
-          <button 
-            className="lg:hidden p-2 text-slate-600"
-            onClick={() => setIsMobileMenuOpen(true)}
-          >
-            <Menu size={24} />
-          </button>
-
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="text-blue-600" size={20} />
-            <span className="font-bold text-slate-800 uppercase tracking-widest text-sm">Système de Gestion Centralisé</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">
-              {user.name.charAt(0)}
-            </div>
-          </div>
-        </header>
-
-        <div className="p-6 flex-1 bg-slate-50 transition-colors duration-300">
-          {children}
-        </div>
-      </main>
-
-      {/* Mobile Menu Overlay */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
-          <aside className="absolute inset-y-0 left-0 w-72 bg-white p-6 shadow-2xl flex flex-col overflow-y-auto">
-            <div className="flex items-center justify-between mb-10 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center text-white">
-                  <ShieldCheck size={22} strokeWidth={2.5} />
-                </div>
-                <h1 className="text-xl font-bold text-slate-800 tracking-tight">SmartAdmin</h1>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden items-center gap-2 sm:flex">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-[#044598]">
+                {user.name?.charAt(0)?.toUpperCase() || 'A'}
               </div>
-              <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-slate-400">
-                <X size={24} />
-              </button>
+              <div className="max-w-36">
+                <p className="truncate text-xs font-bold text-slate-800">
+                  {user.name || 'Administrateur'}
+                </p>
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                  Super Admin
+                </p>
+              </div>
             </div>
 
-            <nav className="flex-1 space-y-2">
-              <SidebarItem 
-                to="/admin" 
-                icon={ShieldCheck} 
-                label="Console Centrale" 
-                active={location.pathname === "/admin"} 
-                userRole={user.role}
-              />
-            </nav>
-
-            <div className="mt-auto pt-6 border-t border-slate-100 shrink-0">
-              <button 
-                onClick={onLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
-              >
-                <LogOut size={20} />
-                <span className="font-medium">Déconnexion</span>
-              </button>
-            </div>
-          </aside>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-bold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 sm:px-3"
+              title="Déconnexion"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          </div>
         </div>
-      )}
+      </header>
+
+      <main className="mx-auto min-w-0 w-full max-w-[1600px] p-3 sm:p-5 lg:p-7">
+        {children}
+      </main>
     </div>
   );
 };
-
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogin = (userData: User, token: string) => {
     localStorage.setItem('user', JSON.stringify(userData));
@@ -753,7 +710,15 @@ export default function App() {
     <ErrorBoundary>
       <NotificationProvider user={user}>
         <OfflineStatus />
-        <Routes>
+        <AnimatePresence mode="wait" initial={false}>
+  <motion.div
+    key={location.pathname}
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: -6 }}
+    transition={{ duration: 0.2, ease: 'easeOut' }}
+  >
+    <Routes location={location}>
         <Route path="/" element={
           user ? (
             user.role === 'admin' ? (
@@ -874,7 +839,9 @@ export default function App() {
             </Layout>
           ) : <Navigate to="/login" />
         } />
-      </Routes>
+          </Routes>
+  </motion.div>
+</AnimatePresence>
     </NotificationProvider>
     </ErrorBoundary>
   );

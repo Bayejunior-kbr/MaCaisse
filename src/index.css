@@ -1,14 +1,78 @@
 @import "tailwindcss";
 
+/* ==========================================================
+   MaCaisse - palette et base
+   Bleu  : #044598 (couleur principale, tirée du logo)
+   Jaune : #F7A90A (accent, tiré du logo)
+   ========================================================== */
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Marque : échelle de bleu autour de #044598 */
+  --color-brand-50: #edf5ff;
+  --color-brand-100: #d7e8ff;
+  --color-brand-200: #afd1fd;
+  --color-brand-300: #79b2fb;
+  --color-brand-400: #368bf7;
+  --color-brand-500: #0966dc;
+  --color-brand-600: #044598;
+  --color-brand-700: #043b81;
+  --color-brand-800: #043067;
+  --color-brand-900: #05244d;
+  --color-brand-950: #04172f;
+
+  /* Accent : jaune du logo */
+  --color-accent-400: #fbbf3c;
+  --color-accent-500: #f7a90a;
+  --color-accent-600: #d98f00;
+
+  /* Rebranding global : tout ce qui était "emerald" devient bleu MaCaisse.
+     Les états de succès (payé, bénéfice...) utiliseront "green" explicitement
+     page par page. */
+  --color-emerald-50: #edf5ff;
+  --color-emerald-100: #d7e8ff;
+  --color-emerald-200: #afd1fd;
+  --color-emerald-300: #79b2fb;
+  --color-emerald-400: #368bf7;
+  --color-emerald-500: #0966dc;
+  --color-emerald-600: #044598;
+  --color-emerald-700: #043b81;
+  --color-emerald-800: #043067;
+  --color-emerald-900: #05244d;
+  --color-emerald-950: #04172f;
+
+  /* Ambre : on aligne les tons principaux sur le jaune du logo */
+  --color-amber-500: #f7a90a;
+  --color-amber-600: #d98f00;
+}
+
 @layer base {
   :root {
     --background: 210 40% 98%;
     --foreground: 222.2 84% 4.9%;
   }
-}
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
 }
 
 body {
@@ -21,4 +85,40 @@ body {
   &::-webkit-scrollbar {
     display: none;
   }
+}
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+/* Barres de défilement plus fines et discrètes */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #cbd5e1;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: content-box;
 }
