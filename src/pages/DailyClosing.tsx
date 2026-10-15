@@ -245,7 +245,7 @@ export default function DailyClosing() {
                 <div className="border-b border-slate-300 w-full"></div>
               </div>
             </div>
-            <p className="text-[10px] text-slate-300 mt-12">Généré par ShopMaster Pro - {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
+            <p className="text-[10px] text-slate-300 mt-12">Généré par MaCaisse - {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
           </div>
         </div>
       ) : (

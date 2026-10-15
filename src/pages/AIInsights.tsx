@@ -18,10 +18,9 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
+import { secureFetch } from '../lib/api';
 import { Link } from 'react-router-dom';
-import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from 'motion/react';
-import { getCleanApiKey } from '../lib/gemini-config';
 
 interface PathStep {
   title: string;
@@ -138,87 +137,39 @@ export default function AIInsights() {
         ...stats
       })).sort((a, b) => b.revenue - a.revenue).slice(0, 50);
 
-      const apiKey = getCleanApiKey();
-      if (!apiKey || apiKey === "undefined") {
-        throw new Error("Clé API Gemini manquante. Veuillez configurer GEMINI_API_KEY.");
-      }
-      
-      const ai = new GoogleGenAI({ apiKey });
-      const model = ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Analyse stratégique de haut niveau pour l'ERP de la boutique: ${user.shopName}.
-        
-        Données de la boutique:
-        - Catégories: ${JSON.stringify(categories)}
-        - Liste des produits (échantillon): ${JSON.stringify(products)}
-        - Résumé des ventes (30 derniers jours): ${JSON.stringify(summarizedSales)}
-        - Dépenses récentes: ${JSON.stringify(expenses)}
-        
-        En tant qu'expert consultant en stratégie d'entreprise (type McKinsey/BCG) et data scientist, fournis une analyse exhaustive et structurée au format JSON strict. 
-        Tes conseils doivent être basés sur des preuves chiffrées, extrêmement concrets, et orientés vers une croissance exponentielle.
-        Analyse particulièrement la rentabilité par catégorie et l'impact des dépenses sur le bénéfice net.
-        
-        Structure JSON attendue:
-        {
-          "summary": "Une analyse globale approfondie de la santé financière et opérationnelle de la boutique, identifiant les leviers de croissance majeurs.",
-          "forecast": [{"day": "Lundi", "value": 1200}, {"day": "Mardi", "value": 1350}, ...], // Prévisions de ventes quotidiennes sur les 7 prochains jours basées sur les tendances saisonnières et les données historiques.
-          "steps": [
-            {
-              "title": "Titre court de l'action",
-              "description": "Explication détaillée de pourquoi cette action est nécessaire, comment l'implémenter étape par étape, et l'impact attendu sur le ROI.",
-              "type": "growth|warning|action|success",
-              "priority": "high|medium|low"
-            }
-          ], // Minimum 8 actions concrètes et priorisées.
-          "financialAdvice": [
-            "Conseil précis sur la gestion de la trésorerie et du fonds de roulement",
-            "Analyse des marges bénéficiaires par catégorie et recommandations d'ajustement",
-            "Identification des investissements à haut rendement (CAPEX)",
-            "Analyse de l'optimisation des charges d'exploitation"
-          ],
-          "inventoryStrategy": [
-            "Analyse ABC des stocks (Produits A: 80% du CA, etc.)",
-            "Produits à réapprovisionner d'urgence pour éviter les ruptures de stock",
-            "Stratégie de déstockage pour les produits à rotation lente (stock dormant)",
-            "Optimisation du cycle de rotation des stocks"
-          ],
-          "categoryAnalysis": [
-            {
-              "category": "Nom de la catégorie",
-              "performance": "high|medium|low",
-              "recommendation": "Conseil spécifique pour cette catégorie (ex: augmenter les prix, diversifier l'offre, réduire le stock)"
-            }
-          ],
-          "risks": [
-            "Risque identifié avec probabilité et impact",
-            "Plan de mitigation détaillé pour chaque risque"
-          ],
-          "swot": {
-            "strengths": ["Force 1", "Force 2"],
-            "weaknesses": ["Faiblesse 1", "Faiblesse 2"],
-            "opportunities": ["Opportunité 1", "Opportunité 2"],
-            "threats": ["Menace 1", "Menace 2"]
-          },
-          "marketingIdeas": [
-            "Idée de campagne promotionnelle ciblée basée sur les produits populaires",
-            "Stratégie de fidélisation client (LTV)",
-            "Canaux d'acquisition recommandés",
-            "Stratégie de cross-selling entre catégories"
-          ],
-          "roadmap": [
-            "Objectif court terme (1 mois)",
-            "Objectif moyen terme (3-6 mois)",
-            "Vision long terme (1 an)"
-          ]
-        }`,
-        config: {
-          systemInstruction: "Tu es un expert consultant en stratégie d'entreprise de classe mondiale. Ton but est de transformer de petits commerces en empires florissants. Tes analyses doivent être extrêmement précises, basées sur les données fournies, et rédigées dans un français professionnel, analytique et inspirant. Réponds UNIQUEMENT au format JSON.",
-          responseMimeType: "application/json"
-        }
-      });
+      const modelResponse = await secureFetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Analyse stratégique de haut niveau pour la boutique: ${user.shopName}.
+          Données de la boutique:
+          - Catégories: ${JSON.stringify(categories)}
+          - Liste des produits (échantillon): ${JSON.stringify(products)}
+          - Résumé des ventes (30 derniers jours): ${JSON.stringify(summarizedSales)}
+          - Dépenses récentes: ${JSON.stringify(expenses)}
 
-      const response = await model;
-      const analysis = response.text;
+          Fournis une analyse concrète basée sur les chiffres, au format JSON strict, avec au minimum huit actions priorisées.
+          Structure attendue:
+          {
+            "summary": "Résumé de la santé financière et opérationnelle",
+            "forecast": [{"day":"Lundi","value":1200}],
+            "steps": [{"title":"Action","description":"Détail et impact attendu","type":"growth|warning|action|success","priority":"high|medium|low"}],
+            "financialAdvice": ["Conseils de trésorerie, marges et dépenses"],
+            "inventoryStrategy": ["Réapprovisionnement et rotation des stocks"],
+            "categoryAnalysis": [{"category":"Catégorie","performance":"high|medium|low","recommendation":"Recommandation"}],
+            "risks": ["Risque et mesure de réduction"],
+            "swot": {"strengths":["Force"],"weaknesses":["Faiblesse"],"opportunities":["Opportunité"],"threats":["Menace"]},
+            "marketingIdeas": ["Idée marketing"],
+            "roadmap": ["Objectif court, moyen et long terme"]
+          }`,
+          systemInstruction: "Tu es un consultant en stratégie pour petits commerces. Base tes recommandations sur les données fournies, en français professionnel. Réponds uniquement en JSON.",
+          responseMimeType: 'application/json'
+        })
+      });
+      const result = await modelResponse.json();
+      if (!modelResponse.ok) throw new Error(result.error || 'Impossible de générer les analyses IA.');
+      const analysis = result.text || '';
+
       
       try {
         const jsonMatch = analysis.match(/\{[\s\S]*\}/);
@@ -295,7 +246,7 @@ export default function AIInsights() {
             className="block w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
           >
             <Zap size={20} />
-            Découvrir ShopMaster Pro Premium
+            Découvrir MaCaisse Premium
           </Link>
         </div>
       </div>

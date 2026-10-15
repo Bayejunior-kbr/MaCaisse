@@ -144,7 +144,7 @@ export default function Expenses() {
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Dépenses");
-    XLSX.writeFile(workbook, `Depenses_ShopMaster_Pro_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `Depenses_MaCaisse_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (

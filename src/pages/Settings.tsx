@@ -84,13 +84,24 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
 
       const { name, language: langSetting, currency: currSetting, ...shopSettings } = newSettings;
       
-      // Handle language and currency separately as they are now free too
+      // Save language and currency to the shop so they survive refreshes and new logins.
       if (langSetting || currSetting) {
+        const preferenceRes = await fetch('/api/shop/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            ...(langSetting ? { language: langSetting } : {}),
+            ...(currSetting ? { currency: currSetting } : {})
+          })
+        });
+        if (!preferenceRes.ok) throw new Error('Impossible d’enregistrer la langue ou la devise.');
         if (langSetting) {
           localStorage.setItem('language', langSetting);
           i18n.changeLanguage(langSetting as Language);
         }
-        // These will be updated in the final state update below
       }
 
       if (Object.keys(shopSettings).length > 0) {
@@ -532,7 +543,7 @@ export default function Settings({ user, onUpdateUser }: { user: UserType, onUpd
                           },
                           body: JSON.stringify({
                             to: phone,
-                            message: "Ceci est un message de test de ShopMaster Pro.",
+                            message: "Ceci est un message de test de MaCaisse.",
                             type: settings.whatsapp_enabled ? 'whatsapp' : 'sms'
                           })
                         });

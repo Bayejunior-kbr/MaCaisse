@@ -96,43 +96,40 @@ if (dbUrl) {
 
 const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.password));
 
-// Email Transporter
+// Email Transporter: credentials must come from environment variables.
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS;
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER || "kobarbayedame6@gmail.com",
-    pass: process.env.EMAIL_PASS || "vncb yyuw wrpt ofrm",
-  },
+  host: process.env.EMAIL_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.EMAIL_PORT || "465", 10),
+  secure: process.env.EMAIL_SECURE !== "false",
+  auth: emailUser && emailPass ? { user: emailUser, pass: emailPass } : undefined,
 });
 
-// Verify SMTP connection on startup
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("[Email] SMTP Connection Error:", error.message);
-  } else {
-    console.log("[Email] SMTP Server is ready to take our messages");
-  }
-});
+if (emailUser && emailPass) {
+  transporter.verify((error) => {
+    if (error) console.error("[Email] SMTP configuration check failed:", error.message);
+    else console.log("[Email] SMTP server is ready");
+  });
+} else {
+  console.warn("[Email] SMTP credentials are not configured; email delivery is disabled.");
+}
 
 const sendEmail = async (to: string, subject: string, text: string) => {
-  console.log(`[Email Debug] To: ${to}, Subject: ${subject}, Body: ${text}`);
+  if (!emailUser || !emailPass) throw new Error("Le service d'envoi d'emails n'est pas configuré.");
   try {
     await transporter.sendMail({
-      from: `"ShopMaster" <kobarbayedame6@gmail.com>`,
+      from: `"MaCaisse" <${emailUser}>`,
       to,
       subject,
       text,
     });
-    console.log(`[Email] Sent to ${to}`);
+    console.log("[Email] Transactional email sent");
   } catch (error) {
-    console.error("[Email] Error sending email:", error);
+    console.error("[Email] Sending failed:", error instanceof Error ? error.message : "Unknown error");
     throw new Error("Erreur lors de l'envoi de l'email.");
   }
-};
-
-console.log("[Server] Database configuration:", { 
+};console.log("[Server] Database configuration:", { 
   mode: isPostgres ? "PostgreSQL" : "SQLite",
   hasUrl: !!dbUrl,
   hasHost: !!pgConfig.host,
@@ -689,7 +686,8 @@ const initDb = async () => {
   dbInitialized = true;
 };
 
-const JWT_SECRET_STR = process.env.JWT_SECRET || "smartstock-senegal-secret-key-2024";
+const JWT_SECRET_STR = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'local-development-only-secret');
+if (!JWT_SECRET_STR) throw new Error("JWT_SECRET must be configured in production.");
 const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STR);
 
 // Initialize Firebase Admin (for token verification)
@@ -1018,7 +1016,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       }
 
       try {
-        await sendEmail(email, "Code de vérification ShopMaster", `Votre code de vérification pour la création de votre boutique est : ${code}`);
+        await sendEmail(email, "Code de vérification MaCaisse", `Votre code de vérification pour la création de votre boutique est : ${code}`);
       } catch (mailErr: any) {
         throw new Error(`Erreur envoi email: ${mailErr.message}`);
       }
@@ -1169,7 +1167,7 @@ const authenticate = async (req: any, res: any, next: any) => {
       }
 
       try {
-        const subject = mode === 'register' ? "Code de vérification pour votre inscription" : "Code de vérification ShopMaster";
+        const subject = mode === 'register' ? "Code de vérification pour votre inscription" : "Code de vérification MaCaisse";
         const message = mode === 'register' ? `Votre code de vérification pour créer votre boutique est : ${code}` : `Votre code de vérification pour la connexion est : ${code}`;
         await sendEmail(email, subject, message);
       } catch (mailErr: any) {
@@ -1283,7 +1281,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 
       await sendEmail(
         email,
-        "Réinitialisation de votre mot de passe - ShopMaster",
+        "Réinitialisation de votre mot de passe - MaCaisse",
         `Bonjour ${user.name},\n\nVous avez demandé la réinitialisation de votre mot de passe.\n\nCliquez sur le lien suivant pour choisir un nouveau mot de passe :\n${resetLink}\n\nCe lien est valable pendant 1 heure.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet email.`
       );
 
@@ -2434,6 +2432,50 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
+  // Gemini requests stay server-side so the API key is never bundled into the browser.
+  const aiGenerationLimiter = rateLimit({ windowMs: 60_000, limit: 8, standardHeaders: true, legacyHeaders: false });
+  app.post("/api/ai/generate", authenticate, aiGenerationLimiter, async (req: any, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(503).json({ error: "Le service IA n'est pas configuré." });
+
+      const shop = req.user.shopId ? await db.get(
+        isPostgres ? "SELECT plan FROM shops WHERE id = $1::int" : "SELECT plan FROM shops WHERE id = ?",
+        req.user.shopId
+      ) : null;
+      if (!shop || (shop.plan !== 'premium' && req.user.role !== 'owner')) {
+        return res.status(403).json({ error: "Cette fonction IA nécessite un accès autorisé." });
+      }
+
+      const { prompt, systemInstruction, responseMimeType } = req.body || {};
+      if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 40_000) {
+        return res.status(400).json({ error: "La demande IA est absente ou trop longue." });
+      }
+      if (systemInstruction !== undefined && (typeof systemInstruction !== 'string' || systemInstruction.length > 4_000)) {
+        return res.status(400).json({ error: "La configuration IA est invalide." });
+      }
+      if (responseMimeType !== undefined && responseMimeType !== 'application/json') {
+        return res.status(400).json({ error: "Le format de réponse demandé n'est pas autorisé." });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          ...(systemInstruction ? { systemInstruction } : {}),
+          ...(responseMimeType ? { responseMimeType } : {})
+        }
+      });
+      return res.json({ text: result.text || "" });
+    } catch (error: any) {
+      const message = String(error?.message || "");
+      console.error("[AI] Request failed:", message.slice(0, 300));
+      const status = message.includes('429') || message.toLowerCase().includes('quota') ? 429 : 502;
+      return res.status(status).json({ error: status === 429 ? "Quota IA épuisé. Réessayez plus tard." : "Impossible de générer l'analyse IA pour le moment." });
+    }
+  });
+
   // Admin Routes
   app.get("/api/admin/stats", authenticate, isAdmin, async (req, res) => {
     try {
@@ -3112,7 +3154,7 @@ const authenticate = async (req: any, res: any, next: any) => {
   }
 
   if (!process.env.VERCEL) {
-    const PORT = 3000;
+    const PORT = parseInt(process.env.PORT || "3000", 10);
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
       console.log(`Database mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);

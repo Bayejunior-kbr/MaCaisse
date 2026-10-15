@@ -627,6 +627,7 @@ export default function App() {
   const handleLogin = (userData: User, token: string) => {
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', token);
+    localStorage.setItem('language', userData.language || 'fr');
     setUser(userData);
     if (userData.role === 'admin') {
       navigate('/admin');
@@ -665,9 +666,11 @@ export default function App() {
           if (res.ok) {
             const serverUser = await res.json();
             localStorage.setItem('user', JSON.stringify(serverUser));
+            localStorage.setItem('language', serverUser.language || 'fr');
             setUser(serverUser);
           } else {
             const parsedUser = JSON.parse(storedUser);
+            localStorage.setItem('language', parsedUser.language || 'fr');
             setUser(parsedUser);
           }
         } catch (e) {

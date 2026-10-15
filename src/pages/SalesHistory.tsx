@@ -5,24 +5,26 @@ import {
   Download, 
   Eye, 
   ArrowLeft,
-  Filter,
   User as UserIcon,
   Clock,
   X,
   Printer,
   FileText
 } from 'lucide-react';
-import { Sale, User, SaleItem } from '../types';
+import { Sale, User } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { secureFetch } from '../lib/api';
 import * as XLSX from 'xlsx';
 import { useTranslation } from '../lib/translations';
+
+const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 
 export default function SalesHistory() {
   const { t } = useTranslation();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -40,7 +42,20 @@ export default function SalesHistory() {
       alert(t('premium_feature'));
       return;
     }
-    alert(t('loading'));
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Autorisez les fenêtres pop-up pour exporter le rapport.');
+      return;
+    }
+    const rows = filteredSales.map(sale => {
+      const date = new Date(sale.created_at);
+      return `<tr><td>#SALE-${String(sale.id).padStart(5, '0')}</td><td>${escapeHtml(date.toLocaleString())}</td><td>${escapeHtml(sale.userName || '')}</td><td>${escapeHtml(sale.customerName || t('guest_customer'))}</td><td>${escapeHtml(sale.payment_method || '')}</td><td class="amount">${escapeHtml(formatCurrency(sale.total_amount, sale.currency))}</td></tr>`;
+    }).join('');
+    const total = filteredSales.reduce((sum, sale) => sum + Number(sale.total_amount || 0), 0);
+    printWindow.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport des ventes - MaCaisse</title><style>
+      body{font:14px Arial,sans-serif;color:#172b4d;margin:32px}h1{color:#044598;margin-bottom:4px}.meta{color:#64748b;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:left}th{background:#eff6ff;color:#044598}.amount{text-align:right;white-space:nowrap}.total{text-align:right;font-size:18px;font-weight:bold;margin-top:20px}@media print{body{margin:12mm}}
+      </style></head><body><h1>Rapport des ventes</h1><div class="meta">MaCaisse · ${new Date().toLocaleString()} · ${filteredSales.length} vente(s)</div><table><thead><tr><th>Référence</th><th>Date</th><th>Vendeur</th><th>Client</th><th>Paiement</th><th class="amount">Total</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Aucune vente pour ces filtres.</td></tr>'}</tbody></table><div class="total">Total : ${escapeHtml(formatCurrency(total, user?.currency))}</div><script>window.onload=()=>setTimeout(()=>window.print(),250)</script></body></html>`);
+    printWindow.document.close();
   };
 
   const handleExportExcel = () => {
@@ -60,7 +75,7 @@ export default function SalesHistory() {
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, t('sales'));
-    XLSX.writeFile(workbook, `${t('sales')}_ShopMaster_Pro_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `${t('sales')}_MaCaisse_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleViewDetails = async (saleId: number) => {
@@ -181,7 +196,7 @@ export default function SalesHistory() {
           <!-- Footer -->
           <div class="mt-24 pt-8 border-t border-slate-100 text-center">
             <p class="text-slate-400 text-xs uppercase tracking-widest font-bold mb-2">${sale.receipt_footer || t('thanks_trust')}</p>
-            <p class="text-slate-300 text-[10px]">Généré par ShopMaster Pro - Votre partenaire de croissance</p>
+            <p class="text-slate-300 text-[10px]">Généré par MaCaisse - Votre partenaire de croissance</p>
           </div>
         </div>
         <script>
@@ -196,7 +211,7 @@ export default function SalesHistory() {
   const getReceiptHTML = (sale: Sale) => `
     <html>
       <head>
-        <title>${t('receipt')} - ShopMaster Pro</title>
+        <title>${t('receipt')} - MaCaisse</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
           @media print {
@@ -251,7 +266,7 @@ export default function SalesHistory() {
 
           <div class="text-center mt-6">
             <p class="italic mb-1">${sale.receipt_footer || t('thanks_trust')}</p>
-            <p class="text-[6px] opacity-30">ShopMaster Pro POS System</p>
+            <p class="text-[6px] opacity-30">MaCaisse POS System</p>
           </div>
         </div>
         <script>
@@ -304,10 +319,18 @@ export default function SalesHistory() {
     }
   };
 
-  const filteredSales = sales.filter(s => 
-    s.userName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.id.toString().includes(searchTerm)
-  );
+  const query = searchTerm.trim().toLowerCase();
+  const filteredSales = sales.filter(s => {
+    const matchesQuery = !query ||
+      s.userName?.toLowerCase().includes(query) ||
+      s.customerName?.toLowerCase().includes(query) ||
+      String(s.id).includes(query) ||
+      s.payment_method?.toLowerCase().includes(query) ||
+      s.payment_status?.toLowerCase().includes(query);
+    const date = new Date(s.created_at);
+    const localDate = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+    return matchesQuery && (!selectedDate || localDate === selectedDate);
+  });
 
   return (
     <div className="space-y-6">
@@ -316,11 +339,12 @@ export default function SalesHistory() {
           <h2 className="text-2xl font-bold text-slate-800">{t('sales_history')}</h2>
           <p className="text-slate-500">{t('sales_history_desc')}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors flex items-center gap-2">
-            <Calendar size={18} />
-            {t('filter_by_date')}
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium flex items-center gap-2">
+            <Calendar size={18} className="shrink-0 text-slate-500" />
+            <input type="date" aria-label={t('filter_by_date')} value={selectedDate} onChange={event => setSelectedDate(event.target.value)} className="min-w-0 bg-transparent text-sm outline-none" />
+            {selectedDate && <button type="button" onClick={() => setSelectedDate('')} aria-label="Effacer la date" className="text-slate-400 hover:text-slate-700"><X size={16} /></button>}
+          </div>
           <button 
             onClick={handleExportExcel}
             className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
@@ -330,7 +354,7 @@ export default function SalesHistory() {
           </button>
           <button 
             onClick={handleExportPDF}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-[#044598] text-white rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-[#033879] transition-colors flex items-center gap-2"
           >
             <FileText size={18} />
             PDF

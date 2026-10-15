@@ -1,11 +1,11 @@
-# Logo Prompt for ShopMaster Pro
+# Logo Prompt for MaCaisse
 
 Utilisez ce prompt dans un générateur d'images IA (Midjourney, DALL-E 3, Gemini Flash Image) pour créer le logo de votre vidéo :
 
 ---
 
 ### PROMPT DE LOGO (Optimisé) :
-"A professional, minimalist logo for 'ShopMaster Pro', a modern commerce and AI management application. 
+"A professional, minimalist logo for 'MaCaisse', a modern commerce and AI management application. 
 The logo features a stylized, abstract shopping cart or a shopping bag integrated with a digital circuit or a glowing AI brain node. 
 Color palette: Deep Indigo (#4F46E5) and Emerald Green (#10B981) on a clean white background. 
 Style: Modern, flat design, vector art, high-end tech aesthetic, symmetrical, elegant. 
@@ -14,8 +14,8 @@ No text, just the icon. High resolution, 4K."
 ---
 
 ### VERSION AVEC TEXTE :
-"A high-end corporate logo for 'ShopMaster Pro'. 
+"A high-end corporate logo for 'MaCaisse'. 
 The icon is a sleek, minimalist geometric shape representing growth and commerce. 
-The text 'ShopMaster Pro' is written in a clean, modern sans-serif font (Inter or Montserrat style) next to the icon. 
+The text 'MaCaisse' is written in a clean, modern sans-serif font (Inter or Montserrat style) next to the icon. 
 Colors: Slate Gray and Indigo. 
 Professional, trustworthy, and innovative. White background, vector style."

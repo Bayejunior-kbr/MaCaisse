@@ -7,8 +7,6 @@ import {
   Package, 
   AlertTriangle, 
   DollarSign,
-  ArrowUpRight,
-  ArrowDownRight,
   BrainCircuit,
   Zap,
   Receipt
@@ -30,8 +28,6 @@ import { DashboardStats } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { secureFetch } from '../lib/api';
-import { GoogleGenAI } from "@google/genai";
-import { getCleanApiKey } from '../lib/gemini-config';
 
 const StatCard = ({ title, value, icon: Icon, color, trend, trendValue }: any) => (
   <motion.div
@@ -53,7 +49,6 @@ const StatCard = ({ title, value, icon: Icon, color, trend, trendValue }: any) =
             trend === 'up' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600',
           )}
         >
-          {trend === 'up' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
           {trendValue}
         </div>
       )}
@@ -127,34 +122,30 @@ export default function Dashboard() {
   const fetchQuickInsight = async (dashboardStats: DashboardStats) => {
     setAiLoading(true);
     try {
-      const apiKey = getCleanApiKey();
-      if (!apiKey) {
-        console.warn("GEMINI_API_KEY is not set");
-        return;
-      }
-      
       const lang = localStorage.getItem('language') || 'fr';
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Analyse ces statistiques de vente d'aujourd'hui pour un commerçant et donne un conseil stratégique très court (max 2 phrases). 
-        Stats du jour: 
-        - Ventes: ${dashboardStats.salesToday}
-        - Bénéfice: ${dashboardStats.profitToday}
-        - Dépenses: ${dashboardStats.expensesToday}
-        - Produits en stock faible: ${dashboardStats.lowStockCount}
-        - Total produits: ${dashboardStats.totalProducts}
-        - Dettes clients: ${dashboardStats.totalDebt}
-        - Historique récent: ${JSON.stringify(dashboardStats.recentSales)}`,
-        config: {
-          systemInstruction: lang === 'fr' 
+      const response = await secureFetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Analyse ces statistiques de vente d'aujourd'hui pour un commerçant et donne un conseil stratégique très court (max 2 phrases).
+          Stats du jour:
+          - Ventes: ${dashboardStats.salesToday}
+          - Bénéfice: ${dashboardStats.profitToday}
+          - Dépenses: ${dashboardStats.expensesToday}
+          - Produits en stock faible: ${dashboardStats.lowStockCount}
+          - Total produits: ${dashboardStats.totalProducts}
+          - Dettes clients: ${dashboardStats.totalDebt}
+          - Historique récent: ${JSON.stringify(dashboardStats.recentSales)}`,
+          systemInstruction: lang === 'fr'
             ? "Tu es un expert en gestion de commerce de détail. Ta réponse doit être en français, très concise, basée uniquement sur les chiffres fournis, et offrir une action concrète immédiate."
             : "You are a retail management expert. Your response must be in English, very concise, based only on the provided figures, and offer an immediate concrete action."
-        }
+        })
       });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to generate AI insight');
 
-      if (response.text) {
-        setAiInsight(response.text);
+      if (result.text) {
+        setAiInsight(result.text);
       }
     } catch (err: any) {
       console.error("Quick insight error:", err);
@@ -174,7 +165,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
       {subscription?.status === 'grace_period' && (
-        <div className="bg-red-50 rounded-3xl p-6 border border-red-100 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+        <div className="bg-red-50 rounded-3xl p-6 border border-red-100 flex flex-col md:flex-row items-center justify-between gap-4 relative overflow-hidden">
           <div className="relative z-10">
             <h3 className="text-xl font-bold mb-1 flex items-center gap-2 text-red-900">
               <AlertTriangle className="text-red-600" size={20} />
@@ -238,14 +229,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
           title={selectedDate === new Date().toISOString().split('T')[0] ? t('daily_sales') : t('period_sales')} 
           value={formatCurrency(stats?.salesToday || 0, user?.currency)} 
           icon={DollarSign} 
           color="bg-emerald-600"
-          trend={selectedDate === new Date().toISOString().split('T')[0] ? "up" : undefined}
-          trendValue={selectedDate === new Date().toISOString().split('T')[0] ? "+12%" : undefined}
         />
         {(user?.role === 'owner' || user?.role === 'admin') && (
           <>
@@ -254,8 +243,6 @@ export default function Dashboard() {
               value={formatCurrency((stats?.profitToday || 0) - (stats?.expensesToday || 0), user?.currency)} 
               icon={TrendingUp} 
               color="bg-blue-600"
-              trend={selectedDate === new Date().toISOString().split('T')[0] ? "up" : undefined}
-              trendValue={selectedDate === new Date().toISOString().split('T')[0] ? "+8%" : undefined}
             />
             <StatCard 
               title={selectedDate === new Date().toISOString().split('T')[0] ? t('daily_expenses') : t('period_expenses')} 
@@ -275,7 +262,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <StatCard 
           title={t('low_stock')} 
           value={stats?.lowStockCount || 0} 
@@ -295,7 +282,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
           <h3 className="text-lg font-bold text-slate-800 mb-6">{t('last_7_days_sales')}</h3>
-          <div className="h-80 w-full">
+          <div className="h-64 sm:h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats?.recentSales || []}>
                 <defs>
@@ -336,7 +323,7 @@ export default function Dashboard() {
                 <Area 
                   type="monotone" 
                   dataKey="amount" 
-                  stroke="#10b981" 
+                  stroke="#044598"
                   strokeWidth={3}
                   fillOpacity={1} 
                   fill="url(#colorAmount)" 

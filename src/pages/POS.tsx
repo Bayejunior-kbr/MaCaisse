@@ -14,7 +14,7 @@ import {
   Camera,
   FileText,
   User as UserIcon,
-  Percent,
+  Tag,
   Receipt,
   Wallet,
   Loader2
@@ -194,7 +194,9 @@ export default function POS() {
 
   const subtotal = cart.reduce((sum, item) => sum + (item.sale_price * item.cartQuantity), 0);
   const taxAmount = user?.show_tax ? subtotal * 0.18 : 0; // 18% VAT example
-  const finalTotal = subtotal + taxAmount - discount;
+  const appliedDiscount = Math.min(Math.max(0, discount), subtotal + taxAmount);
+  const finalTotal = subtotal + taxAmount - appliedDiscount;
+  const cartItemCount = cart.reduce((count, item) => count + item.cartQuantity, 0);
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
@@ -209,7 +211,7 @@ export default function POS() {
           total_amount: finalTotal,
           customer_id: selectedCustomer?.id,
           tax_amount: taxAmount,
-          discount_amount: discount,
+          discount_amount: appliedDiscount,
           payment_method: paymentMethod,
           payment_status: paymentStatus,
           amount_paid: paymentStatus === 'paid' ? finalTotal : amountPaid,
@@ -232,7 +234,7 @@ export default function POS() {
             created_at: new Date().toISOString(),
             total_amount: finalTotal,
             total_profit: 0, // Not calculated offline
-            discount_amount: discount,
+            discount_amount: appliedDiscount,
             tax_amount: taxAmount,
             payment_method: paymentMethod,
             payment_status: paymentStatus,
@@ -251,6 +253,7 @@ export default function POS() {
           alert("Vente enregistrée en mode hors-ligne. Elle sera synchronisée dès que la connexion sera rétablie.");
           setShowSuccess(true);
           setCart([]);
+          setShowMobileCart(false);
           setSelectedCustomer(null);
           setDiscount(0);
           fetchProducts();
@@ -264,6 +267,7 @@ export default function POS() {
         }
         setShowSuccess(true);
         setCart([]);
+        setShowMobileCart(false);
         setSelectedCustomer(null);
         setDiscount(0);
         fetchProducts();
@@ -527,7 +531,7 @@ export default function POS() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>${t('receipt')} - ShopMaster Pro</title>
+            <title>${t('receipt')} - MaCaisse</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
               @media print {
@@ -614,7 +618,7 @@ export default function POS() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Reçu - ShopMaster Pro</title>
+            <title>Reçu - MaCaisse</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
               @media print {
@@ -671,7 +675,7 @@ export default function POS() {
 
               <div class="text-center mt-6">
                 <p class="italic mb-1">${lastSale?.receipt_footer || 'Merci de votre visite !'}</p>
-                <p class="text-[6px] opacity-30">ShopMaster Pro POS System</p>
+                <p class="text-[6px] opacity-30">MaCaisse POS System</p>
               </div>
             </div>
             <script>
@@ -736,9 +740,9 @@ export default function POS() {
               className="lg:hidden relative p-2 bg-white border border-slate-200 rounded-xl text-slate-600 shadow-sm"
             >
               <ShoppingCart size={20} />
-              {cart.length > 0 && (
+              {cartItemCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-600 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white">
-                  {cart.length}
+                  {cartItemCount}
                 </span>
               )}
             </button>
@@ -828,10 +832,10 @@ export default function POS() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900">{t('cart')}</h3>
-              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{cart.length} {t('item')}{cart.length > 1 ? 's' : ''}</p>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{cartItemCount} {t('item')}{cartItemCount > 1 ? 's' : ''}</p>
             </div>
           </div>
-          {cart.length > 0 && (
+          {cartItemCount > 0 && (
             <button 
               onClick={() => setCart([])}
               className="text-[10px] font-bold text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg transition-all uppercase tracking-wider"
@@ -894,13 +898,15 @@ export default function POS() {
                 </select>
               </div>
               <div className="relative">
-                <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input 
                   type="number" 
                   placeholder={t('discount').toUpperCase()} 
                   className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold outline-none focus:border-emerald-500 transition-all text-slate-700 placeholder:text-slate-300"
                   value={discount || ''}
-                  onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  max={subtotal + taxAmount}
+                  onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
                 />
               </div>
             </div>
@@ -961,7 +967,9 @@ export default function POS() {
                 className="w-full px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-bold outline-none focus:border-amber-500 text-slate-700"
                 placeholder={t('amount_paid')}
                 value={amountPaid || ''}
-                onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
+                min="0"
+                max={finalTotal}
+                onChange={(e) => setAmountPaid(Math.min(finalTotal, Math.max(0, parseFloat(e.target.value) || 0)))}
               />
             </motion.div>
           )}
@@ -969,7 +977,7 @@ export default function POS() {
           <button 
             disabled={cart.length === 0 || isProcessing}
             onClick={handleCheckout}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl shadow-lg shadow-slate-200 transition-all disabled:opacity-20 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
+            className="w-full bg-[#044598] hover:bg-[#033879] text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/15 transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-xs uppercase tracking-widest"
           >
             {isProcessing ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
             {isProcessing ? t('loading') : t('checkout')}

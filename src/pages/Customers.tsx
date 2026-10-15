@@ -171,7 +171,7 @@ export default function Customers() {
         </div>
         <h2 className="text-3xl font-black text-slate-800 mb-4 uppercase tracking-tighter">Gestion Clientèle Premium</h2>
         <p className="text-slate-500 max-w-md mb-8">
-          La gestion de base de données clients est une fonctionnalité exclusive de ShopMaster Pro Premium. 
+          La gestion de base de données clients est une fonctionnalité exclusive de MaCaisse Premium. 
           Suivez vos clients fidèles, gérez leurs crédits et améliorez votre relation client.
         </p>
         <button 

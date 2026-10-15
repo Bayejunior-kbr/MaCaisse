@@ -29,6 +29,7 @@ export default function Inventory() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -264,10 +265,11 @@ export default function Inventory() {
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.categoryName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(p => {
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch = !query || p.name?.toLowerCase().includes(query) || p.categoryName?.toLowerCase().includes(query) || p.barcode?.toLowerCase().includes(query);
+    return matchesSearch && (!showLowStockOnly || p.quantity <= p.min_quantity);
+  });
 
   const exportToExcel = () => {
     const data = filteredProducts.map(p => ({
@@ -286,7 +288,7 @@ export default function Inventory() {
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Inventaire");
-    XLSX.writeFile(workbook, `Inventaire_ShopMaster_Pro_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `Inventaire_MaCaisse_Pro_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (
@@ -342,8 +344,13 @@ export default function Inventory() {
             >
               <Download size={20} />
             </button>
-            <button className="p-2 text-slate-400 hover:text-emerald-600 transition-colors">
-              <Upload size={20} />
+            <button
+              type="button"
+              onClick={() => setShowLowStockOnly(value => !value)}
+              aria-pressed={showLowStockOnly}
+              className={cn("rounded-xl border px-3 py-2 text-sm font-semibold transition-colors", showLowStockOnly ? "border-blue-200 bg-blue-50 text-[#044598]" : "border-slate-200 text-slate-600 hover:bg-slate-50")}
+            >
+              <span className="flex items-center gap-2"><AlertCircle size={16} />{showLowStockOnly ? t('all_stock') : t('low_stock')}</span>
             </button>
           </div>
         </div>

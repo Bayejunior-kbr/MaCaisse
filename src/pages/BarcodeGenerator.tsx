@@ -222,7 +222,7 @@ export default function BarcodeGenerator() {
                   <div ref={printRef} className="bg-white p-6 rounded-lg text-center flex flex-col items-center gap-2">
                     {settings.showShopName && (
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-                        {user.shopName || "ShopMaster Pro"}
+                        {user.shopName || "MaCaisse"}
                       </p>
                     )}
                     {settings.showName && (
