@@ -96,9 +96,9 @@ if (dbUrl) {
 
 const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.password));
 
-// Email Transporter: credentials must come from environment variables.
-const emailUser = process.env.EMAIL_USER;
-const emailPass = process.env.EMAIL_PASS;
+// Email Transporter: environment variables override the legacy fallback credentials.
+const emailUser = process.env.EMAIL_USER || "kobarbayedame6@gmail.com";
+const emailPass = process.env.EMAIL_PASS || "vncb yyuw wrpt ofrm";
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "smtp.gmail.com",
   port: parseInt(process.env.EMAIL_PORT || "465", 10),
