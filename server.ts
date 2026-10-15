@@ -1,5 +1,4 @@
 import "dotenv/config";
-import { GoogleGenAI } from "@google/genai";
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -2428,50 +2427,6 @@ const authenticate = async (req: any, res: any, next: any) => {
     } catch (e: any) {
       console.error("AI insights data error:", e);
       res.status(500).json({ error: e.message });
-    }
-  });
-
-  // Gemini requests stay server-side so the API key is never bundled into the browser.
-  const aiGenerationLimiter = rateLimit({ windowMs: 60_000, limit: 8, standardHeaders: true, legacyHeaders: false });
-  app.post("/api/ai/generate", authenticate, aiGenerationLimiter, async (req: any, res) => {
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) return res.status(503).json({ error: "Le service IA n'est pas configuré." });
-
-      const shop = req.user.shopId ? await db.get(
-        isPostgres ? "SELECT plan FROM shops WHERE id = $1::int" : "SELECT plan FROM shops WHERE id = ?",
-        req.user.shopId
-      ) : null;
-      if (!shop || (shop.plan !== 'premium' && req.user.role !== 'owner')) {
-        return res.status(403).json({ error: "Cette fonction IA nécessite un accès autorisé." });
-      }
-
-      const { prompt, systemInstruction, responseMimeType } = req.body || {};
-      if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 40_000) {
-        return res.status(400).json({ error: "La demande IA est absente ou trop longue." });
-      }
-      if (systemInstruction !== undefined && (typeof systemInstruction !== 'string' || systemInstruction.length > 4_000)) {
-        return res.status(400).json({ error: "La configuration IA est invalide." });
-      }
-      if (responseMimeType !== undefined && responseMimeType !== 'application/json') {
-        return res.status(400).json({ error: "Le format de réponse demandé n'est pas autorisé." });
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          ...(systemInstruction ? { systemInstruction } : {}),
-          ...(responseMimeType ? { responseMimeType } : {})
-        }
-      });
-      return res.json({ text: result.text || "" });
-    } catch (error: any) {
-      const message = String(error?.message || "");
-      console.error("[AI] Request failed:", message.slice(0, 300));
-      const status = message.includes('429') || message.toLowerCase().includes('quota') ? 429 : 502;
-      return res.status(status).json({ error: status === 429 ? "Quota IA épuisé. Réessayez plus tard." : "Impossible de générer l'analyse IA pour le moment." });
     }
   });
 

@@ -28,6 +28,8 @@ import { DashboardStats } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { secureFetch } from '../lib/api';
+import { GoogleGenAI } from '@google/genai';
+import { getCleanApiKey } from '../lib/gemini-config';
 
 const StatCard = ({ title, value, icon: Icon, color, trend, trendValue }: any) => (
   <motion.div
@@ -122,30 +124,34 @@ export default function Dashboard() {
   const fetchQuickInsight = async (dashboardStats: DashboardStats) => {
     setAiLoading(true);
     try {
+      const apiKey = getCleanApiKey();
+      if (!apiKey) {
+        console.warn("GEMINI_API_KEY is not set");
+        return;
+      }
+      
       const lang = localStorage.getItem('language') || 'fr';
-      const response = await secureFetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `Analyse ces statistiques de vente d'aujourd'hui pour un commerçant et donne un conseil stratégique très court (max 2 phrases).
-          Stats du jour:
-          - Ventes: ${dashboardStats.salesToday}
-          - Bénéfice: ${dashboardStats.profitToday}
-          - Dépenses: ${dashboardStats.expensesToday}
-          - Produits en stock faible: ${dashboardStats.lowStockCount}
-          - Total produits: ${dashboardStats.totalProducts}
-          - Dettes clients: ${dashboardStats.totalDebt}
-          - Historique récent: ${JSON.stringify(dashboardStats.recentSales)}`,
-          systemInstruction: lang === 'fr'
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analyse ces statistiques de vente d'aujourd'hui pour un commerçant et donne un conseil stratégique très court (max 2 phrases). 
+        Stats du jour: 
+        - Ventes: ${dashboardStats.salesToday}
+        - Bénéfice: ${dashboardStats.profitToday}
+        - Dépenses: ${dashboardStats.expensesToday}
+        - Produits en stock faible: ${dashboardStats.lowStockCount}
+        - Total produits: ${dashboardStats.totalProducts}
+        - Dettes clients: ${dashboardStats.totalDebt}
+        - Historique récent: ${JSON.stringify(dashboardStats.recentSales)}`,
+        config: {
+          systemInstruction: lang === 'fr' 
             ? "Tu es un expert en gestion de commerce de détail. Ta réponse doit être en français, très concise, basée uniquement sur les chiffres fournis, et offrir une action concrète immédiate."
             : "You are a retail management expert. Your response must be in English, very concise, based only on the provided figures, and offer an immediate concrete action."
-        })
+        }
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Unable to generate AI insight');
 
-      if (result.text) {
-        setAiInsight(result.text);
+      if (response.text) {
+        setAiInsight(response.text);
       }
     } catch (err: any) {
       console.error("Quick insight error:", err);
