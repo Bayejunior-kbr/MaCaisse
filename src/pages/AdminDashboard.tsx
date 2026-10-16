@@ -170,7 +170,7 @@ export default function AdminDashboard() {
   const [platformSettings, setPlatformSettings] = useState<any>({
     payment_number: '78 307 01 14',
     maintenance_mode: 'false',
-    support_email: 'support@smartstock.sn',
+    support_email: 'macaisse80@gmail.com',
   });
 
   const [loading, setLoading] = useState(true);

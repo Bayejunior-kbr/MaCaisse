@@ -1,12 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  ArrowLeft,
   ArrowRight,
   BarChart3,
   Check,
   ChevronDown,
   Cloud,
   Menu,
+  Mail,
   Package,
   Play,
   ShieldCheck,
@@ -740,6 +742,10 @@ export default function Landing() {
               <a href="#tarifs" className="hover:text-brand-700">Tarifs</a>
               <Link to="/login" className="hover:text-brand-700">Connexion</Link>
               <Link to="/register" className="hover:text-brand-700">Créer ma boutique</Link>
+              <Link to="/conditions-utilisation" className="hover:text-brand-700">Conditions d’utilisation</Link>
+              <Link to="/confidentialite" className="hover:text-brand-700">Confidentialité</Link>
+              <Link to="/mentions-legales" className="hover:text-brand-700">Mentions légales</Link>
+              <a href="mailto:macaisse80@gmail.com" className="hover:text-brand-700">Contact</a>
             </nav>
           </div>
 
@@ -749,5 +755,63 @@ export default function Landing() {
         </footer>
       </div>
     </MotionConfig>
+  );
+}
+
+type LegalKind = 'terms' | 'privacy' | 'notice';
+
+const legalContent: Record<LegalKind, { title: string; intro: string; sections: { title: string; paragraphs: string[] }[] }> = {
+  terms: {
+    title: "Conditions d’utilisation",
+    intro: "Ces conditions expliquent les règles de base pour utiliser MaCaisse, l’outil de gestion destiné aux commerçants.",
+    sections: [
+      { title: 'Le service', paragraphs: ['MaCaisse permet notamment de gérer une boutique, des produits, le stock, les ventes et les informations clients saisies par l’utilisateur.', 'Les fonctionnalités et les offres disponibles peuvent évoluer. Les tarifs et les conditions d’une offre payante sont ceux présentés dans l’application au moment de la souscription.'] },
+      { title: 'Votre compte et vos informations', paragraphs: ['Vous devez fournir des informations exactes, protéger vos identifiants et prévenir le support si vous pensez que votre compte a été utilisé sans votre autorisation.', 'Vous êtes responsable des informations que vous ajoutez dans votre boutique et devez disposer des droits nécessaires pour les utiliser, notamment pour les données de vos clients.'] },
+      { title: 'Utilisation correcte', paragraphs: ['Vous vous engagez à utiliser MaCaisse conformément aux lois applicables et à ne pas tenter de perturber le service, d’accéder aux comptes d’autrui ou de contourner ses mesures de sécurité.'] },
+      { title: 'Disponibilité et assistance', paragraphs: ['Nous faisons notre possible pour maintenir le service accessible et corriger les problèmes signalés. Des interruptions peuvent toutefois survenir pour maintenance, incident ou mise à jour.', 'Pour toute question, contactez-nous à macaisse80@gmail.com.'] },
+    ],
+  },
+  privacy: {
+    title: 'Politique de confidentialité',
+    intro: 'Cette page résume les données utilisées par MaCaisse pour fournir les fonctionnalités de gestion et aider à protéger les comptes.',
+    sections: [
+      { title: 'Données concernées', paragraphs: ['Selon les fonctionnalités utilisées, MaCaisse peut traiter les informations de compte (nom et adresse email), les informations de boutique ainsi que les produits, stocks, ventes et données clients que vous ajoutez.', 'Les données des clients de votre boutique sont saisies sous votre responsabilité. Vous devez les informer de l’usage de leurs informations et ne saisir que les données nécessaires à votre activité.'] },
+      { title: 'Pourquoi nous les utilisons', paragraphs: ['Ces informations servent à créer et gérer votre compte, faire fonctionner les outils de caisse et de gestion, sécuriser le service, répondre à vos demandes et envoyer les emails nécessaires, par exemple pour réinitialiser un mot de passe.', 'Certaines fonctions facultatives d’assistance par intelligence artificielle peuvent traiter les informations que vous leur soumettez afin de produire une réponse. Évitez d’y inclure des informations sensibles ou inutiles.'] },
+      { title: 'Prestataires et conservation', paragraphs: ['Le service s’appuie sur des prestataires techniques pour l’hébergement, l’authentification, la base de données, l’envoi des emails et certaines fonctions facultatives. La liste détaillée, les lieux de traitement et les durées de conservation seront précisés avec les informations complètes de l’éditeur.', 'Les données sont conservées aussi longtemps que nécessaire au fonctionnement de votre compte et au respect des obligations applicables. Les modalités détaillées de suppression seront précisées dans la version complète de cette politique.'] },
+      { title: 'Vos demandes', paragraphs: ['Pour demander l’accès, la correction ou la suppression de vos informations, écrivez à macaisse80@gmail.com depuis l’adresse associée à votre compte. Nous vérifierons votre demande avant d’agir.'] },
+    ],
+  },
+  notice: {
+    title: 'Mentions légales',
+    intro: 'Les informations ci-dessous identifient le service et son moyen de contact. Les informations juridiques de l’entreprise seront complétées lorsque sa situation sera finalisée.',
+    sections: [
+      { title: 'Éditeur du service', paragraphs: ['Nom du service : MaCaisse.', 'Adresse de contact : macaisse80@gmail.com.', 'Nom légal de l’éditeur, adresse professionnelle et informations d’immatriculation : à compléter.'] },
+      { title: 'Hébergement et contact', paragraphs: ['Pour toute question relative au site ou à ces informations, écrivez à macaisse80@gmail.com. Les coordonnées complètes de l’hébergeur et les informations juridiques de l’éditeur seront ajoutées dans la version mise à jour.'] },
+      { title: 'Propriété intellectuelle', paragraphs: ['Les éléments propres à MaCaisse — notamment son nom, son logo, ses textes et son interface — ne peuvent pas être réutilisés sans autorisation, sauf disposition légale contraire.'] },
+    ],
+  },
+};
+
+export function LegalPage({ kind }: { kind: LegalKind }) {
+  const page = legalContent[kind];
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto max-w-3xl">
+        <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-brand-700 transition hover:text-brand-900"><ArrowLeft size={17} /> Retour à l’accueil</Link>
+        <article className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
+          <div className="mb-8 border-b border-slate-100 pb-6">
+            <img src="/logo.png" alt="MaCaisse" className="mb-5 h-12 w-12 object-contain" />
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-600">MaCaisse</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{page.title}</h1>
+            <p className="mt-4 leading-relaxed text-slate-600">{page.intro}</p>
+            <p className="mt-3 text-xs text-slate-400">Version initiale — informations de l’éditeur et modalités détaillées à compléter.</p>
+          </div>
+          <div className="space-y-7">
+            {page.sections.map((section) => <section key={section.title}><h2 className="text-lg font-extrabold text-slate-900">{section.title}</h2><div className="mt-2 space-y-3 text-sm leading-7 text-slate-600 sm:text-base">{section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div></section>)}
+          </div>
+          <a href="mailto:macaisse80@gmail.com" className="mt-9 inline-flex items-center gap-2 rounded-xl bg-brand-50 px-4 py-3 text-sm font-bold text-brand-700 transition hover:bg-brand-100"><Mail size={17} /> Contacter MaCaisse</a>
+        </article>
+      </div>
+    </main>
   );
 }

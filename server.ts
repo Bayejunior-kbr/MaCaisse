@@ -96,9 +96,10 @@ if (dbUrl) {
 
 const isPostgres = !!(pgConfig.connectionString || (pgConfig.host && pgConfig.password));
 
-// Email Transporter: environment variables override the legacy fallback credentials.
-const emailUser = process.env.EMAIL_USER || "kobarbayedame6@gmail.com";
-const emailPass = process.env.EMAIL_PASS || "vncb yyuw wrpt ofrm";
+// Email credentials must come from environment variables; never fall back to a
+// mailbox password embedded in the source code.
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS;
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "smtp.gmail.com",
   port: parseInt(process.env.EMAIL_PORT || "465", 10),
@@ -119,7 +120,7 @@ const sendEmail = async (to: string, subject: string, text: string) => {
   if (!emailUser || !emailPass) throw new Error("Le service d'envoi d'emails n'est pas configuré.");
   try {
     await transporter.sendMail({
-      from: `"MaCaisse" <${emailUser}>`,
+      from: `"${process.env.EMAIL_FROM_NAME || "MaCaisse"}" <${emailUser}>`,
       to,
       subject,
       text,
@@ -433,6 +434,10 @@ const initDb = async () => {
         payment_method TEXT DEFAULT 'cash',
         payment_status TEXT DEFAULT 'paid',
         amount_paid REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        cancelled_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
+        cancelled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        cancellation_reason TEXT,
         created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -445,6 +450,29 @@ const initDb = async () => {
         unit_price REAL NOT NULL,
         unit_profit REAL NOT NULL,
         total_price REAL NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_edit_history (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reason TEXT NOT NULL,
+        previous_items TEXT NOT NULL,
+        updated_items TEXT NOT NULL,
+        previous_total REAL NOT NULL,
+        updated_total REAL NOT NULL,
+        amount_difference REAL NOT NULL,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS daily_summary_emails (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        report_date DATE NOT NULL,
+        sent_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(shop_id, user_id, report_date)
       );
 
       CREATE TABLE IF NOT EXISTS customer_payments (
@@ -499,6 +527,19 @@ const initDb = async () => {
         action TEXT NOT NULL,
         details TEXT,
         ip_address TEXT,
+        created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS shop_activity_logs (
+        id ${isPostgres ? 'SERIAL' : 'INTEGER'} PRIMARY KEY ${isPostgres ? '' : 'AUTOINCREMENT'},
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        user_name TEXT NOT NULL,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        summary TEXT NOT NULL,
+        details TEXT,
         created_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'} DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -562,6 +603,10 @@ const initDb = async () => {
         { table: "sales", column: "payment_method", type: "TEXT DEFAULT 'cash'" },
         { table: "sales", column: "amount_paid", type: "REAL DEFAULT 0" },
         { table: "sales", column: "payment_status", type: "TEXT DEFAULT 'paid'" },
+        { table: "sales", column: "status", type: "TEXT DEFAULT 'active'" },
+        { table: "sales", column: "cancelled_at", type: "TIMESTAMP" },
+        { table: "sales", column: "cancelled_by", type: "INTEGER REFERENCES users(id) ON DELETE SET NULL" },
+        { table: "sales", column: "cancellation_reason", type: "TEXT" },
         { table: "customers", column: "total_debt", type: "REAL DEFAULT 0" },
         { table: "customers", column: "phone", type: "TEXT" },
         { table: "customers", column: "email", type: "TEXT" },
@@ -622,6 +667,10 @@ const initDb = async () => {
         "ALTER TABLE sales ADD COLUMN payment_method TEXT DEFAULT 'cash'",
         "ALTER TABLE sales ADD COLUMN amount_paid REAL DEFAULT 0",
         "ALTER TABLE sales ADD COLUMN payment_status TEXT DEFAULT 'paid'",
+        "ALTER TABLE sales ADD COLUMN status TEXT DEFAULT 'active'",
+        "ALTER TABLE sales ADD COLUMN cancelled_at DATETIME",
+        "ALTER TABLE sales ADD COLUMN cancelled_by INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        "ALTER TABLE sales ADD COLUMN cancellation_reason TEXT",
         "ALTER TABLE customers ADD COLUMN total_debt REAL DEFAULT 0",
         "ALTER TABLE customers ADD COLUMN phone TEXT",
         "ALTER TABLE customers ADD COLUMN email TEXT",
@@ -655,38 +704,43 @@ const initDb = async () => {
     }
   } catch (e) {}
 
-  // Ensure admin user exists
+  // Optional admin bootstrap. Never create or elevate an account using
+  // hard-coded credentials or a hard-coded email address.
   try {
-    const adminEmail = "kobarbayedame6@gmail.com";
-    const existingAdmin = await db.get(isPostgres ? "SELECT id, role FROM users WHERE email = $1::text" : "SELECT id, role FROM users WHERE email = ?", adminEmail);
-    if (!existingAdmin) {
-      console.log("Creating default admin account...");
-      const passwordHash = await bcrypt.hash("admin123", 10);
-      await db.run(
-        isPostgres 
-          ? "INSERT INTO users (name, email, password_hash, role) VALUES ($1::text, $2::text, $3::text, $4::text)" 
-          : "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
-        "Administrateur", adminEmail, passwordHash, "admin"
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+    if (adminEmail && adminPassword) {
+      if (adminPassword.length < 16) {
+        throw new Error("INITIAL_ADMIN_PASSWORD must contain at least 16 characters.");
+      }
+      const existingAdmin = await db.get(
+        isPostgres ? "SELECT id, role FROM users WHERE email = $1::text" : "SELECT id, role FROM users WHERE email = ?",
+        adminEmail
       );
-    } else if (existingAdmin.role !== 'admin') {
-      console.log(`Promoting ${adminEmail} to admin...`);
-      await db.run(isPostgres 
-        ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
-        : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", adminEmail);
+      if (!existingAdmin) {
+        const passwordHash = await bcrypt.hash(adminPassword, 12);
+        await db.run(
+          isPostgres
+            ? "INSERT INTO users (name, email, password_hash, role) VALUES ($1::text, $2::text, $3::text, $4::text)"
+            : "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+          "Administrateur", adminEmail, passwordHash, "admin"
+        );
+        console.log("Initial administrator account created from environment configuration.");
+      }
+    } else {
+      console.info("Optional administrator bootstrap skipped; existing administrator accounts are unchanged.");
     }
-    
-    // Also ensure baye@gmail.com is admin
-    await db.run(isPostgres 
-      ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = $1::text" 
-      : "UPDATE users SET role = 'admin', shop_id = NULL WHERE email = ?", 'baye@gmail.com');
   } catch (e) {
-    console.error("Failed to ensure admin user:", e);
+    console.error("Administrator bootstrap failed:", e);
   }
 
   dbInitialized = true;
 };
 
-const JWT_SECRET_STR = process.env.JWT_SECRET || 'smartstock-senegal-secret-key-2024';
+const JWT_SECRET_STR = process.env.JWT_SECRET;
+if (!JWT_SECRET_STR || JWT_SECRET_STR.length < 32) {
+  throw new Error("JWT_SECRET must be configured with at least 32 characters before starting the server.");
+}
 const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STR);
 
 // Initialize Firebase Admin (for token verification)
@@ -772,7 +826,7 @@ const broadcastToShop = (shopId: number, data: any) => {
 const alertAdmin = async (title: string, message: string) => {
   try {
     const alertEmail = await db.get(isPostgres ? "SELECT value FROM platform_settings WHERE key = $1::text" : "SELECT value FROM platform_settings WHERE key = ?", 'admin_alert_email');
-    const email = alertEmail ? alertEmail.value : 'kobarbayedame6@gmail.com';
+    const email = alertEmail?.value || "non configurée";
     console.log(`[ADMIN ALERT] To: ${email} | ${title}: ${message}`);
   } catch (e) {
     console.error("Failed to alert admin:", e);
@@ -805,6 +859,60 @@ const logAdminAction = async (userId: number, action: string, details: string, i
     console.error("Failed to log admin action:", e);
   }
 };
+
+const recordShopActivity = async (req: any, action: string, entityType: string, entityId: unknown, summary: string, details: Record<string, unknown> = {}) => {
+  try {
+    const shopId = Number(req.user?.shopId);
+    const userId = Number(req.user?.userId);
+    if (!Number.isInteger(shopId) || !Number.isInteger(userId)) return;
+    const user = await db.get(
+      isPostgres ? "SELECT name FROM users WHERE id = $1::int AND shop_id = $2::int" : "SELECT name FROM users WHERE id = ? AND shop_id = ?",
+      userId, shopId
+    );
+    const userName = user?.name || `Compte #${userId}`;
+    await db.run(
+      isPostgres
+        ? "INSERT INTO shop_activity_logs (shop_id, user_id, user_name, action, entity_type, entity_id, summary, details) VALUES ($1::int, $2::int, $3::text, $4::text, $5::text, $6::text, $7::text, $8::text)"
+        : "INSERT INTO shop_activity_logs (shop_id, user_id, user_name, action, entity_type, entity_id, summary, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      shopId, userId, userName, action, entityType, entityId == null ? null : String(entityId), summary, JSON.stringify(details)
+    );
+  } catch (error) {
+    console.error("[Activity log] Could not record shop activity:", error instanceof Error ? error.message : "unknown error");
+  }
+};
+
+// Record successful shop mutations after route handlers have authenticated the user.
+app.use((req: any, res: any, next: any) => {
+  const originalJson = res.json.bind(res);
+  res.json = async (body: any) => {
+    const path = String(req.path || '');
+    const method = String(req.method || '').toUpperCase();
+    const routeMatch = path.match(/^\/api\/(products|categories|customers|suppliers|expenses|users)(?:\/([^/]+))?/);
+    const isCustomerPaymentRoute = /^\/api\/customers\/[^/]+\/payments$/.test(path);
+    const isKnownShopMutation = routeMatch && !isCustomerPaymentRoute && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+    if (isKnownShopMutation && req.user?.userId && res.statusCode < 400) {
+      const [, entityType, pathId] = routeMatch;
+      const action = method === 'POST' ? 'CREATED' : method === 'DELETE' ? 'DELETED' : 'UPDATED';
+      const entityKey: Record<string, string> = { products: 'PRODUCT', categories: 'CATEGORY', customers: 'CUSTOMER', suppliers: 'SUPPLIER', expenses: 'EXPENSE', users: 'USER' };
+      const actionKey = `${entityKey[entityType]}_${action}`;
+      const entityName: Record<string, string> = { products: 'Produit', categories: 'Catégorie', customers: 'Client', suppliers: 'Fournisseur', expenses: 'Dépense', users: 'Compte' };
+      const bodyInput = req.body || {};
+      const label = String(bodyInput.name || bodyInput.title || bodyInput.description || `#${pathId || ''}`).trim();
+      const summary = action === 'CREATED'
+        ? `${entityName[entityType]} ajouté : ${label}`
+        : action === 'UPDATED'
+          ? `${entityName[entityType]} modifié : ${label}`
+          : `${entityName[entityType]} supprimé : ${label}`;
+      const safeDetails: Record<string, unknown> = {};
+      for (const key of ['name', 'title', 'quantity', 'sale_price', 'purchase_price', 'min_quantity', 'amount', 'category', 'payment_method', 'role', 'status']) {
+        if (bodyInput[key] !== undefined && bodyInput[key] !== null) safeDetails[key] = bodyInput[key];
+      }
+      await recordShopActivity(req, actionKey, entityName[entityType].toLowerCase(), pathId || body.id || null, summary, safeDetails);
+    }
+    return originalJson(body);
+  };
+  next();
+});
 
 app.use(async (req, res, next) => {
   if (req.path.startsWith('/api')) {
@@ -856,39 +964,13 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-app.get("/api/debug-db", async (req, res) => {
-  const info = {
-    isVercel: !!process.env.VERCEL,
-    nodeEnv: process.env.NODE_ENV,
-    dbMode: isPostgres ? "PostgreSQL" : "SQLite",
-    hasSupabaseUrl: !!process.env.SUPABASE_URL,
-    hasDatabaseUrl: !!process.env.DATABASE_URL,
-    hasPostgresUrl: !!process.env.POSTGRES_URL,
-    dbInitialized,
-    dbInitPromise: !!dbInitPromise
-  };
-  
-  try {
-    if (isPostgres) {
-      if (!pool) throw new Error("Pool not initialized");
-      const client = await pool.connect();
-      const ver = await client.query("SELECT version()");
-      client.release();
-      res.json({ ...info, connection: "OK", pgVersion: ver.rows[0].version });
-    } else {
-      res.json({ ...info, connection: "SQLite (Local)" });
-    }
-  } catch (err: any) {
-    res.status(500).json({ ...info, connection: "FAILED", error: err.message });
-  }
-});
-
 app.get("/api/health-db", async (req, res) => {
   try {
     await initDb();
     res.json({ status: "Database initialized successfully" });
   } catch (e: any) {
-    res.status(500).json({ status: "Database initialization failed", error: e.message });
+    console.error("[Health] Database initialization failed:", e instanceof Error ? e.message : "Unknown error");
+    res.status(503).json({ status: "Database temporarily unavailable" });
   }
 });
 
@@ -1406,9 +1488,6 @@ const authenticate = async (req: any, res: any, next: any) => {
 
       if (!email) return res.status(400).json({ error: "Email non fourni par Google" });
 
-      // Special case: kobarbayedame6@gmail.com is always an admin
-      const isAdminEmail = email === "kobarbayedame6@gmail.com";
-
       // Check if user exists
       let user = await db.get(isPostgres 
         ? "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.email = $1::text" 
@@ -1416,18 +1495,15 @@ const authenticate = async (req: any, res: any, next: any) => {
 
       if (!user) {
         // Create new shop and user if not exists
-        // If admin email, they don't get a shop by default
         let shopId = null;
         let shopName = providedShopName || `Boutique de ${name || email.split('@')[0]}`;
-        let role = isAdminEmail ? "admin" : "owner";
+        const role = "owner";
 
-        if (!isAdminEmail) {
-          const shopResult = await db.run(isPostgres 
-            ? "INSERT INTO shops (name, address, phone) VALUES ($1::text, $2::text, $3::text) RETURNING id" 
-            : "INSERT INTO shops (name, address, phone) VALUES (?, ?, ?)", 
-            shopName, shopAddress || null, shopPhone || null);
-          shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
-        }
+        const shopResult = await db.run(isPostgres 
+          ? "INSERT INTO shops (name, address, phone) VALUES ($1::text, $2::text, $3::text) RETURNING id" 
+          : "INSERT INTO shops (name, address, phone) VALUES (?, ?, ?)", 
+          shopName, shopAddress || null, shopPhone || null);
+        shopId = isPostgres ? shopResult.rows[0].id : shopResult.lastInsertRowid;
         
         // Use a random password hash for Google users (they'll use Google to login anyway)
         const passwordHash = await bcrypt.hash(Math.random().toString(36), 10);
@@ -1442,13 +1518,6 @@ const authenticate = async (req: any, res: any, next: any) => {
           : "SELECT u.*, s.name as shopName, s.address as shopAddress, s.phone as shopPhone, s.plan, s.logo_url, s.theme, s.language, s.currency, s.receipt_footer, s.show_tax, s.sms_enabled, s.whatsapp_enabled, s.notification_template, s.status as shopStatus FROM users u LEFT JOIN shops s ON u.shop_id = s.id WHERE u.id = ?", userId);
       }
       
-      if (isAdminEmail && user.role !== 'admin') {
-        // Promote existing user to admin if they are using the admin email
-        await db.run(isPostgres ? "UPDATE users SET role = 'admin', shop_id = NULL WHERE id = $1::int" : "UPDATE users SET role = ? WHERE id = ?", "admin", user.id);
-        user.role = 'admin';
-        user.shop_id = null;
-      }
-
       const token = await new SignJWT({ userId: user.id, shopId: user.shop_id, role: user.role })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("30d")
@@ -1623,34 +1692,6 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
-  app.post("/api/auth/promote-to-admin", authenticate, async (req: any, res) => {
-    try {
-      // Check if the user is the authorized admin email
-      const user = await db.get(isPostgres ? "SELECT email FROM users WHERE id = $1::int" : "SELECT email FROM users WHERE id = ?", req.user.userId);
-      const superAdmins = ['baye@gmail.com', 'kobarbayedame6@gmail.com'];
-      if (!superAdmins.includes(user?.email)) {
-        return res.status(403).json({ error: "Seul l'administrateur principal peut effectuer cette action." });
-      }
-
-      await db.run(isPostgres ? "UPDATE users SET role = 'admin' WHERE id = $1::int" : "UPDATE users SET role = 'admin' WHERE id = ?", req.user.userId);
-      
-      // Generate a new token with the updated role
-      const newToken = await new SignJWT({ 
-        userId: req.user.userId, 
-        shopId: req.user.shopId, 
-        role: 'admin' 
-      })
-        .setProtectedHeader({ alg: "HS256" })
-        .setExpirationTime("30d")
-        .sign(JWT_SECRET);
-
-      res.json({ success: true, role: 'admin', token: newToken });
-    } catch (err: any) {
-      console.error("Promote to admin error:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   // Upload Route
   app.post("/api/upload", authenticate, upload.single("image"), (req: any, res) => {
     try {
@@ -1775,23 +1816,6 @@ const authenticate = async (req: any, res: any, next: any) => {
       res.json(data);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/debug/db", authenticate, async (req: any, res) => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: "Unauthorized" });
-    try {
-      const tables = isPostgres 
-        ? await db.all("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-        : await db.all("SELECT name FROM sqlite_master WHERE type='table'");
-      
-      const productsInfo = isPostgres
-        ? await db.all("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'products'")
-        : await db.all("PRAGMA table_info(products)");
-
-      res.json({ tables, productsInfo });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
     }
   });
 
@@ -1928,12 +1952,31 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   app.post("/api/categories", authenticate, async (req: any, res) => {
     try {
-      const { name } = req.body;
+      const name = String(req.body?.name || '').trim();
+      if (!name) return res.status(400).json({ error: "Le nom de la catégorie est obligatoire." });
       const result = await db.run(isPostgres ? "INSERT INTO categories (shop_id, name) VALUES ($1::int, $2::text) RETURNING id" : "INSERT INTO categories (shop_id, name) VALUES (?, ?)", req.user.shopId, name);
       const categoryId = isPostgres ? result.rows[0].id : result.lastInsertRowid;
       res.json({ id: categoryId });
     } catch (e: any) {
       console.error("Create category error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/categories/:id", authenticate, async (req: any, res) => {
+    try {
+      const name = String(req.body?.name || '').trim();
+      if (!name) return res.status(400).json({ error: "Le nom de la catégorie est obligatoire." });
+      const result = await db.run(
+        isPostgres
+          ? "UPDATE categories SET name = $1::text WHERE id = $2::int AND shop_id = $3::int"
+          : "UPDATE categories SET name = ? WHERE id = ? AND shop_id = ?",
+        name, req.params.id, req.user.shopId
+      );
+      if ((result.changes ?? result.rowCount ?? 0) === 0) return res.status(404).json({ error: "Catégorie introuvable." });
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update category error:", e);
       res.status(500).json({ error: e.message });
     }
   });
@@ -2075,6 +2118,10 @@ const authenticate = async (req: any, res: any, next: any) => {
         }
       });
 
+      await recordShopActivity(req, 'SALE_CREATED', 'sale', saleId, `Vente #${saleId} enregistrée pour ${Number(total_amount || 0).toLocaleString('fr-FR')} FCFA`, {
+        total: Number(total_amount || 0), itemCount: Array.isArray(items) ? items.length : 0, paymentMethod: payment_method || 'cash', paymentStatus: payment_status || 'paid'
+      });
+
       // Send notification if customer is selected
       if (customer_id) {
         try {
@@ -2166,6 +2213,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           amount, customerId, shopId);
       });
 
+      await recordShopActivity(req, 'PAYMENT_RECEIVED', 'customer_payment', req.params.id, `Paiement de ${Number(amount).toLocaleString('fr-FR')} FCFA reçu pour ${customer.name}`, { amount: Number(amount), paymentMethod: payment_method || 'cash' });
       // Send payment notification
       try {
         const shop = await db.get(isPostgres ? "SELECT * FROM shops WHERE id = $1::int" : "SELECT * FROM shops WHERE id = ?", shopId);
@@ -2200,12 +2248,14 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       const sales = await db.all(isPostgres 
         ? `SELECT s.*, u.name as "userName", COALESCE(sh.name, 'Boutique Inconnue') as "shopName"
+              , (SELECT COUNT(*) FROM sale_edit_history h WHERE h.sale_id = s.id) as "editCount"
            FROM sales s 
            JOIN users u ON s.user_id = u.id 
            LEFT JOIN shops sh ON s.shop_id = sh.id
            WHERE s.shop_id = $1::int 
            ORDER BY s.created_at DESC`
-        : `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName
+        : `SELECT s.*, u.name as userName, COALESCE(sh.name, 'Boutique Inconnue') as shopName,
+              (SELECT COUNT(*) FROM sale_edit_history h WHERE h.sale_id = s.id) as editCount
            FROM sales s 
            JOIN users u ON s.user_id = u.id 
            LEFT JOIN shops sh ON s.shop_id = sh.id
@@ -2251,10 +2301,194 @@ const authenticate = async (req: any, res: any, next: any) => {
           WHERE si.sale_id = ?`,
         req.params.id);
 
-      res.json({ ...sale, items });
+      const editHistory = await db.all(
+        isPostgres
+          ? `SELECT h.*, u.name AS "userName" FROM sale_edit_history h LEFT JOIN users u ON h.user_id = u.id WHERE h.sale_id = $1::int AND h.shop_id = $2::int ORDER BY h.created_at DESC`
+          : `SELECT h.*, u.name AS userName FROM sale_edit_history h LEFT JOIN users u ON h.user_id = u.id WHERE h.sale_id = ? AND h.shop_id = ? ORDER BY h.created_at DESC`,
+        req.params.id, req.user.shopId
+      );
+
+      res.json({ ...sale, items, editHistory });
     } catch (e: any) {
       console.error("Get sale error:", e);
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/sales/:id/cancel", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Seul le propriétaire ou l’administrateur peut annuler une vente." });
+    }
+    const reason = String(req.body?.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: "Indiquez le motif du retour ou de l’annulation." });
+    try {
+      await db.transaction(async () => {
+        const sale = await db.get(
+          isPostgres
+            ? "SELECT * FROM sales WHERE id = $1::int AND shop_id = $2::int FOR UPDATE"
+            : "SELECT * FROM sales WHERE id = ? AND shop_id = ?",
+          req.params.id, req.user.shopId
+        );
+        if (!sale) throw new Error("Vente introuvable.");
+        if ((sale.status || 'active') === 'cancelled') throw new Error("Cette vente a déjà été annulée.");
+        // The current data model does not allocate debt payments to individual sales.
+        // Restrict full returns to fully-paid sales so another sale's debt is never changed by mistake.
+        const recordedPaid = Number(sale.amount_paid || 0);
+        if (sale.payment_status !== 'paid' || (recordedPaid > 0 && recordedPaid < Number(sale.total_amount || 0))) {
+          throw new Error("Cette vente est impayée ou partiellement payée. Réglez d’abord la dette avant de l’annuler.");
+        }
+        const items = await db.all(
+          isPostgres
+            ? "SELECT product_id, quantity FROM sale_items WHERE sale_id = $1::int"
+            : "SELECT product_id, quantity FROM sale_items WHERE sale_id = ?",
+          req.params.id
+        );
+        if (!items.length || items.some((item: any) => !item.product_id)) {
+          throw new Error("Le stock ne peut pas être restauré : un produit de cette vente n’existe plus dans le catalogue.");
+        }
+        for (const item of items) {
+          const product = await db.get(
+            isPostgres
+              ? "SELECT id FROM products WHERE id = $1::int AND shop_id = $2::int"
+              : "SELECT id FROM products WHERE id = ? AND shop_id = ?",
+            item.product_id, req.user.shopId
+          );
+          if (!product) throw new Error("Le stock ne peut pas être restauré : un produit de cette vente n’existe plus dans le catalogue.");
+        }
+        for (const item of items) {
+          await db.run(
+            isPostgres
+              ? "UPDATE products SET quantity = quantity + $1::numeric WHERE id = $2::int AND shop_id = $3::int"
+              : "UPDATE products SET quantity = quantity + ? WHERE id = ? AND shop_id = ?",
+            item.quantity, item.product_id, req.user.shopId
+          );
+        }
+        await db.run(
+          isPostgres
+            ? "UPDATE sales SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP, cancelled_by = $1::int, cancellation_reason = $2::text WHERE id = $3::int AND shop_id = $4::int"
+            : "UPDATE sales SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP, cancelled_by = ?, cancellation_reason = ? WHERE id = ? AND shop_id = ?",
+          req.user.userId, reason, req.params.id, req.user.shopId
+        );
+      });
+      await recordShopActivity(req, 'SALE_CANCELLED', 'sale', req.params.id, `Vente #${req.params.id} annulée : ${reason}`, { reason });
+      res.json({ success: true });
+    } catch (e: any) {
+      const message = String(e?.message || "Erreur lors de l’annulation de la vente.");
+      const status = message === "Vente introuvable." ? 404 : 400;
+      res.status(status).json({ error: message });
+    }
+  });
+
+  app.put("/api/sales/:id", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Seul le propriétaire ou l’administrateur peut corriger une vente." });
+    }
+    const reason = String(req.body?.reason || '').trim();
+    const inputItems = req.body?.items;
+    const taxAmount = Number(req.body?.tax_amount || 0);
+    const discountAmount = Number(req.body?.discount_amount || 0);
+    const adjustmentSettled = req.body?.adjustmentSettled === true;
+    if (!reason || !Array.isArray(inputItems) || inputItems.length === 0 ||
+        !Number.isFinite(taxAmount) || taxAmount < 0 || !Number.isFinite(discountAmount) || discountAmount < 0) {
+      return res.status(400).json({ error: "Vérifiez le motif, les articles, la taxe et la remise." });
+    }
+
+    try {
+      await db.transaction(async () => {
+        const sale = await db.get(
+          isPostgres ? "SELECT * FROM sales WHERE id = $1::int AND shop_id = $2::int FOR UPDATE" : "SELECT * FROM sales WHERE id = ? AND shop_id = ?",
+          req.params.id, req.user.shopId
+        );
+        if (!sale) throw new Error("Vente introuvable.");
+        if ((sale.status || 'active') === 'cancelled') throw new Error("Une vente annulée ne peut pas être modifiée.");
+        if (sale.payment_status !== 'paid') throw new Error("Seules les ventes entièrement payées peuvent être modifiées pour le moment.");
+
+        const oldItems = await db.all(
+          isPostgres ? "SELECT * FROM sale_items WHERE sale_id = $1::int" : "SELECT * FROM sale_items WHERE sale_id = ?",
+          req.params.id
+        );
+        if (!oldItems.length || oldItems.some((item: any) => !item.product_id)) {
+          throw new Error("Un produit de cette vente n’existe plus dans le catalogue. La vente ne peut pas être corrigée automatiquement.");
+        }
+
+        const normalizedItems: any[] = [];
+        for (const item of inputItems) {
+          const productId = Number(item.product_id);
+          const quantity = Number(item.quantity);
+          const unitPrice = Number(item.unit_price);
+          if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+            throw new Error("Un article contient un produit, une quantité ou un prix invalide.");
+          }
+          const product = await db.get(
+            isPostgres ? "SELECT id, name, quantity, purchase_price FROM products WHERE id = $1::int AND shop_id = $2::int" : "SELECT id, name, quantity, purchase_price FROM products WHERE id = ? AND shop_id = ?",
+            productId, req.user.shopId
+          );
+          if (!product) throw new Error("Un produit choisi n’appartient pas à cette boutique.");
+          normalizedItems.push({ product_id: productId, product_name: product.name, quantity, unit_price: unitPrice, unit_profit: unitPrice - Number(product.purchase_price || 0), total_price: quantity * unitPrice });
+        }
+
+        const oldQty = new Map<number, number>();
+        const newQty = new Map<number, number>();
+        oldItems.forEach((item: any) => oldQty.set(Number(item.product_id), (oldQty.get(Number(item.product_id)) || 0) + Number(item.quantity)));
+        normalizedItems.forEach(item => newQty.set(item.product_id, (newQty.get(item.product_id) || 0) + item.quantity));
+        for (const productId of new Set([...oldQty.keys(), ...newQty.keys()])) {
+          const product = await db.get(
+            isPostgres ? "SELECT id, quantity FROM products WHERE id = $1::int AND shop_id = $2::int" : "SELECT id, quantity FROM products WHERE id = ? AND shop_id = ?",
+            productId, req.user.shopId
+          );
+          if (!product) throw new Error("Un produit de cette vente n’existe plus dans le catalogue.");
+          const availableAfterRestoringOldSale = Number(product.quantity) + (oldQty.get(productId) || 0);
+          if (availableAfterRestoringOldSale < (newQty.get(productId) || 0)) throw new Error(`Stock insuffisant pour corriger le produit (disponible : ${availableAfterRestoringOldSale}).`);
+        }
+
+        const subtotal = normalizedItems.reduce((sum, item) => sum + item.total_price, 0);
+        const updatedTotal = subtotal + taxAmount - discountAmount;
+        if (discountAmount > subtotal + taxAmount || updatedTotal <= 0) throw new Error("La remise dépasse le montant de la vente.");
+        const previousTotal = Number(sale.total_amount || 0);
+        const amountDifference = updatedTotal - previousTotal;
+        if (Math.abs(amountDifference) > 0.01 && !adjustmentSettled) {
+          throw new Error("Confirmez d’abord que la différence a été encaissée ou rendue au client.");
+        }
+
+        for (const productId of new Set([...oldQty.keys(), ...newQty.keys()])) {
+          const stockDelta = (oldQty.get(productId) || 0) - (newQty.get(productId) || 0);
+          if (stockDelta !== 0) {
+            await db.run(
+              isPostgres ? "UPDATE products SET quantity = quantity + $1::numeric WHERE id = $2::int AND shop_id = $3::int" : "UPDATE products SET quantity = quantity + ? WHERE id = ? AND shop_id = ?",
+              stockDelta, productId, req.user.shopId
+            );
+          }
+        }
+        await db.run(isPostgres ? "DELETE FROM sale_items WHERE sale_id = $1::int" : "DELETE FROM sale_items WHERE sale_id = ?", req.params.id);
+        for (const item of normalizedItems) {
+          await db.run(
+            isPostgres
+              ? "INSERT INTO sale_items (sale_id, product_id, product_name, quantity, unit_price, unit_profit, total_price) VALUES ($1::int, $2::int, $3::text, $4::numeric, $5::numeric, $6::numeric, $7::numeric)"
+              : "INSERT INTO sale_items (sale_id, product_id, product_name, quantity, unit_price, unit_profit, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            req.params.id, item.product_id, item.product_name, item.quantity, item.unit_price, item.unit_profit, item.total_price
+          );
+        }
+        const totalProfit = normalizedItems.reduce((sum, item) => sum + item.unit_profit * item.quantity, 0);
+        await db.run(
+          isPostgres
+            ? "UPDATE sales SET total_amount = $1::numeric, total_profit = $2::numeric, tax_amount = $3::numeric, discount_amount = $4::numeric, amount_paid = $1::numeric WHERE id = $5::int AND shop_id = $6::int"
+            : "UPDATE sales SET total_amount = ?, total_profit = ?, tax_amount = ?, discount_amount = ?, amount_paid = ? WHERE id = ? AND shop_id = ?",
+          updatedTotal, totalProfit, taxAmount, discountAmount, updatedTotal, req.params.id, req.user.shopId
+        );
+        await db.run(
+          isPostgres
+            ? "INSERT INTO sale_edit_history (shop_id, sale_id, user_id, reason, previous_items, updated_items, previous_total, updated_total, amount_difference) VALUES ($1::int, $2::int, $3::int, $4::text, $5::text, $6::text, $7::numeric, $8::numeric, $9::numeric)"
+            : "INSERT INTO sale_edit_history (shop_id, sale_id, user_id, reason, previous_items, updated_items, previous_total, updated_total, amount_difference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          req.user.shopId, req.params.id, req.user.userId, reason, JSON.stringify(oldItems), JSON.stringify(normalizedItems), previousTotal, updatedTotal, amountDifference
+        );
+        await recordShopActivity(req, 'SALE_UPDATED', 'sale', req.params.id, `Vente #${req.params.id} corrigée : ${reason}`, {
+          reason, previousTotal, updatedTotal, amountDifference, previousItems: oldItems, updatedItems: normalizedItems
+        });
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      const message = String(e?.message || "Erreur lors de la correction de la vente.");
+      res.status(message === "Vente introuvable." ? 404 : 400).json({ error: message });
     }
   });
 
@@ -2349,12 +2583,12 @@ const authenticate = async (req: any, res: any, next: any) => {
       const filterDate = req.query.date; // YYYY-MM-DD
       
       const salesTodaySql = isPostgres 
-        ? `SELECT SUM(total_amount) as total FROM sales WHERE shop_id = $1::int AND created_at::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
-        : `SELECT SUM(total_amount) as total FROM sales WHERE shop_id = ? AND date(created_at) = ${filterDate ? '?' : "date('now')"}`;
+        ? `SELECT SUM(total_amount) as total FROM sales WHERE shop_id = $1::int AND COALESCE(status, 'active') != 'cancelled' AND created_at::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
+        : `SELECT SUM(total_amount) as total FROM sales WHERE shop_id = ? AND COALESCE(status, 'active') != 'cancelled' AND date(created_at) = ${filterDate ? '?' : "date('now')"}`;
       
       const profitTodaySql = isPostgres
-        ? `SELECT SUM(total_profit) as total FROM sales WHERE shop_id = $1::int AND created_at::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
-        : `SELECT SUM(total_profit) as total FROM sales WHERE shop_id = ? AND date(created_at) = ${filterDate ? '?' : "date('now')"}`;
+        ? `SELECT SUM(total_profit) as total FROM sales WHERE shop_id = $1::int AND COALESCE(status, 'active') != 'cancelled' AND created_at::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
+        : `SELECT SUM(total_profit) as total FROM sales WHERE shop_id = ? AND COALESCE(status, 'active') != 'cancelled' AND date(created_at) = ${filterDate ? '?' : "date('now')"}`;
 
       const expensesTodaySql = isPostgres
         ? `SELECT SUM(amount) as total FROM expenses WHERE shop_id = $1::int AND date::date = ${filterDate ? '$2::date' : 'CURRENT_DATE'}`
@@ -2363,12 +2597,12 @@ const authenticate = async (req: any, res: any, next: any) => {
       const recentSalesSql = isPostgres
         ? `SELECT created_at::date as date, SUM(total_amount) as amount 
            FROM sales 
-           WHERE shop_id = $1::int AND created_at >= ${filterDate ? '$2::date' : 'CURRENT_DATE'} - INTERVAL '7 days'
+           WHERE shop_id = $1::int AND COALESCE(status, 'active') != 'cancelled' AND created_at >= ${filterDate ? '$2::date' : 'CURRENT_DATE'} - INTERVAL '7 days'
            GROUP BY created_at::date
            ORDER BY date`
         : `SELECT date(created_at) as date, SUM(total_amount) as amount 
            FROM sales 
-           WHERE shop_id = ? AND created_at >= date(${filterDate ? '?' : "'now'"}, '-7 days')
+           WHERE shop_id = ? AND COALESCE(status, 'active') != 'cancelled' AND created_at >= date(${filterDate ? '?' : "'now'"}, '-7 days')
            GROUP BY date(created_at)
            ORDER BY date`;
   
@@ -2416,12 +2650,12 @@ const authenticate = async (req: any, res: any, next: any) => {
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
            LEFT JOIN products p ON si.product_id = p.id
-           WHERE s.shop_id = $1::int AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'`
+           WHERE s.shop_id = $1::int AND COALESCE(s.status, 'active') != 'cancelled' AND s.created_at >= CURRENT_DATE - INTERVAL '30 days'`
         : `SELECT s.total_amount, s.total_profit, s.created_at, si.quantity, COALESCE(si.product_name, p.name) as productName, p.category_id
            FROM sales s
            JOIN sale_items si ON s.id = si.sale_id
            LEFT JOIN products p ON si.product_id = p.id
-           WHERE s.shop_id = ? AND s.created_at >= date('now', '-30 days')`;
+           WHERE s.shop_id = ? AND COALESCE(s.status, 'active') != 'cancelled' AND s.created_at >= date('now', '-30 days')`;
 
       const sales = await db.all(salesSql, shopId);
       res.json({ products, sales, categories, expenses });
@@ -2480,8 +2714,8 @@ const authenticate = async (req: any, res: any, next: any) => {
     try {
       const totalShops = await db.get("SELECT COUNT(*) as count FROM shops");
       const totalUsers = await db.get("SELECT COUNT(*) as count FROM users");
-      const totalSales = await db.get("SELECT SUM(total_amount) as total FROM sales");
-      const totalProfit = await db.get("SELECT SUM(total_profit) as total FROM sales");
+      const totalSales = await db.get("SELECT SUM(total_amount) as total FROM sales WHERE COALESCE(status, 'active') != 'cancelled'");
+      const totalProfit = await db.get("SELECT SUM(total_profit) as total FROM sales WHERE COALESCE(status, 'active') != 'cancelled'");
       const premiumShops = await db.get("SELECT COUNT(*) as count FROM shops WHERE plan = 'premium'");
       const totalSubscriptionRevenue = await db.get("SELECT COUNT(*) * 10000 as total FROM subscription_requests WHERE status = 'approved'");
 
@@ -2540,7 +2774,7 @@ const authenticate = async (req: any, res: any, next: any) => {
         SELECT s.*, 
           (SELECT COUNT(*) FROM users WHERE shop_id = s.id) as userCount,
           (SELECT COUNT(*) FROM products WHERE shop_id = s.id) as productCount,
-          (SELECT SUM(total_amount) FROM sales WHERE shop_id = s.id) as totalSales
+          (SELECT SUM(total_amount) FROM sales WHERE shop_id = s.id AND COALESCE(status, 'active') != 'cancelled') as totalSales
         FROM shops s
       `);
       res.json(shops);
@@ -2652,11 +2886,13 @@ const authenticate = async (req: any, res: any, next: any) => {
   app.delete("/api/admin/users/:id", authenticate, isAdmin, async (req, res) => {
     try {
       const userId = req.params.id;
-      // Don't allow deleting the super admin
-      const user = await db.get(isPostgres ? "SELECT email FROM users WHERE id = $1::int" : "SELECT email FROM users WHERE id = ?", userId);
-      const superAdmins = ['baye@gmail.com', 'kobarbayedame6@gmail.com'];
-      if (superAdmins.includes(user?.email)) {
-        return res.status(403).json({ error: "Impossible de supprimer un administrateur principal." });
+      const user = await db.get(isPostgres ? "SELECT id, email, role FROM users WHERE id = $1::int" : "SELECT id, email, role FROM users WHERE id = ?", userId);
+      if (!user) return res.status(404).json({ error: "Utilisateur introuvable." });
+      if (user.role === 'admin') {
+        const adminCount = await db.get("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
+        if (Number(adminCount?.count || 0) <= 1) {
+          return res.status(409).json({ error: "Le dernier administrateur ne peut pas être supprimé." });
+        }
       }
       await db.run(isPostgres ? "DELETE FROM users WHERE id = $1::int" : "DELETE FROM users WHERE id = ?", userId);
       
@@ -2911,7 +3147,9 @@ const authenticate = async (req: any, res: any, next: any) => {
         amount = parseFloat(amount.replace(',', '.'));
       }
 
-      if (!title || amount === undefined || amount === null || isNaN(amount) || !category) {
+      title = typeof title === 'string' ? title.trim() : '';
+      category = typeof category === 'string' ? category.trim() : '';
+      if (!title || amount === undefined || amount === null || !Number.isFinite(amount) || amount < 0 || !category) {
         return res.status(400).json({ error: "Le titre, le montant et la catégorie sont obligatoires." });
       }
       const result = await db.run(isPostgres 
@@ -2922,6 +3160,29 @@ const authenticate = async (req: any, res: any, next: any) => {
       res.json({ id: expenseId });
     } catch (e: any) {
       console.error("Create expense error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/expenses/:id", authenticate, async (req: any, res) => {
+    try {
+      let { title, amount, category, description, date } = req.body || {};
+      if (typeof amount === 'string') amount = parseFloat(amount.replace(',', '.'));
+      title = typeof title === 'string' ? title.trim() : '';
+      category = typeof category === 'string' ? category.trim() : '';
+      if (!title || !Number.isFinite(amount) || amount < 0 || !category || !date || Number.isNaN(Date.parse(date))) {
+        return res.status(400).json({ error: "Vérifiez le titre, le montant, la catégorie et la date." });
+      }
+      const result = await db.run(
+        isPostgres
+          ? "UPDATE expenses SET title = $1::text, amount = $2::numeric, category = $3::text, description = $4::text, date = $5::timestamp WHERE id = $6::int AND shop_id = $7::int"
+          : "UPDATE expenses SET title = ?, amount = ?, category = ?, description = ?, date = ? WHERE id = ? AND shop_id = ?",
+        title, amount, category, String(description || ''), date, req.params.id, req.user.shopId
+      );
+      if ((result.changes ?? result.rowCount ?? 0) === 0) return res.status(404).json({ error: "Dépense introuvable." });
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Update expense error:", e);
       res.status(500).json({ error: e.message });
     }
   });
@@ -2943,8 +3204,8 @@ const authenticate = async (req: any, res: any, next: any) => {
       const date = req.query.date || new Date().toISOString().split('T')[0];
 
       const salesByMethodSql = isPostgres
-        ? "SELECT payment_method, SUM(total_amount) as total, COUNT(*) as count FROM sales WHERE shop_id = $1::int AND created_at::date = $2::date GROUP BY payment_method"
-        : "SELECT payment_method, SUM(total_amount) as total, COUNT(*) as count FROM sales WHERE shop_id = ? AND date(created_at) = ? GROUP BY payment_method";
+        ? "SELECT payment_method, SUM(total_amount) as total, COUNT(*) as count FROM sales WHERE shop_id = $1::int AND COALESCE(status, 'active') != 'cancelled' AND created_at::date = $2::date GROUP BY payment_method"
+        : "SELECT payment_method, SUM(total_amount) as total, COUNT(*) as count FROM sales WHERE shop_id = ? AND COALESCE(status, 'active') != 'cancelled' AND date(created_at) = ? GROUP BY payment_method";
 
       const expensesSql = isPostgres
         ? "SELECT category, SUM(amount) as total FROM expenses WHERE shop_id = $1::int AND date::date = $2::date GROUP BY category"
@@ -2992,7 +3253,27 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
   });
 
-  // API 404 handler - must be before Vite/Static middleware
+  app.get("/api/activity", authenticate, async (req: any, res) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: "Le journal d’activité est réservé au propriétaire et à l’administrateur." });
+    }
+    try {
+      const rawCursor = Number.parseInt(String(req.query.before || ''), 10);
+      const hasCursor = Number.isInteger(rawCursor) && rawCursor > 0;
+      const logs = await db.all(
+        isPostgres
+          ? `SELECT id, user_id, user_name AS "userName", action, entity_type AS "entityType", entity_id AS "entityId", summary, details, created_at AS "createdAt" FROM shop_activity_logs WHERE shop_id = $1::int ${hasCursor ? 'AND id < $2::int' : ''} ORDER BY id DESC LIMIT 100`
+          : `SELECT id, user_id, user_name AS userName, action, entity_type AS entityType, entity_id AS entityId, summary, details, created_at AS createdAt FROM shop_activity_logs WHERE shop_id = ? ${hasCursor ? 'AND id < ?' : ''} ORDER BY id DESC LIMIT 100`,
+        ...(hasCursor ? [req.user.shopId, rawCursor] : [req.user.shopId])
+      );
+      res.json({ items: logs, nextCursor: logs.length === 100 ? logs[logs.length - 1].id : null });
+    } catch (error: any) {
+      console.error("Get shop activity error:", error?.message || error);
+      res.status(500).json({ error: "Impossible de charger le journal d’activité." });
+    }
+  });
+
+    // API 404 handler - must be before Vite/Static middleware
   app.use("/api", (req, res) => {
     console.log(`API 404: ${req.method} ${req.originalUrl}`);
     res.status(404).json({ 
@@ -3038,6 +3319,144 @@ const authenticate = async (req: any, res: any, next: any) => {
       }
     });
   }
+
+  // Daily shop summaries are called by Vercel Cron at 00:00 UTC (Dakar time).
+  app.get("/api/cron/daily-summary", async (req: any, res) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret || req.headers.authorization !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: "Non autorisé." });
+    }
+    try {
+      const reportDate = typeof req.query.date === 'string'
+        ? req.query.date
+        : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const parsedReportDate = new Date(`${reportDate}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate) || Number.isNaN(parsedReportDate.getTime()) || parsedReportDate.toISOString().slice(0, 10) !== reportDate) {
+        return res.status(400).json({ error: "Date invalide." });
+      }
+      const shops = await db.all("SELECT id, name, currency FROM shops ORDER BY id");
+      let emailsSent = 0;
+      let failures = 0;
+      for (const shop of shops) {
+        const recipients = await db.all(
+          isPostgres
+            ? "SELECT id, name, email FROM users WHERE shop_id = $1::int AND email IS NOT NULL AND TRIM(email) != '' ORDER BY id"
+            : "SELECT id, name, email FROM users WHERE shop_id = ? AND email IS NOT NULL AND TRIM(email) != '' ORDER BY id",
+          shop.id
+        );
+        if (!recipients.length) continue;
+
+        const sales = await db.get(
+          isPostgres
+            ? "SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total, COALESCE(SUM(total_profit), 0) AS profit FROM sales WHERE shop_id = $1::int AND COALESCE(status, 'active') != 'cancelled' AND created_at::date = $2::date"
+            : "SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total, COALESCE(SUM(total_profit), 0) AS profit FROM sales WHERE shop_id = ? AND COALESCE(status, 'active') != 'cancelled' AND date(created_at) = ?",
+          shop.id, reportDate
+        );
+        const expenses = await db.get(
+          isPostgres
+            ? "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM expenses WHERE shop_id = $1::int AND date::date = $2::date"
+            : "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM expenses WHERE shop_id = ? AND date(date) = ?",
+          shop.id, reportDate
+        );
+        const expenseCategories = await db.all(
+          isPostgres
+            ? "SELECT category, SUM(amount) AS total FROM expenses WHERE shop_id = $1::int AND date::date = $2::date GROUP BY category ORDER BY total DESC"
+            : "SELECT category, SUM(amount) AS total FROM expenses WHERE shop_id = ? AND date(date) = ? GROUP BY category ORDER BY total DESC",
+          shop.id, reportDate
+        );
+        const payments = await db.get(
+          isPostgres
+            ? "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM customer_payments WHERE shop_id = $1::int AND created_at::date = $2::date"
+            : "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM customer_payments WHERE shop_id = ? AND date(created_at) = ?",
+          shop.id, reportDate
+        );
+        const cancelled = await db.get(
+          isPostgres
+            ? "SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total FROM sales WHERE shop_id = $1::int AND status = 'cancelled' AND cancelled_at::date = $2::date"
+            : "SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total FROM sales WHERE shop_id = ? AND status = 'cancelled' AND date(cancelled_at) = ?",
+          shop.id, reportDate
+        );
+        const corrections = await db.get(
+          isPostgres
+            ? "SELECT COUNT(*) AS count FROM sale_edit_history WHERE shop_id = $1::int AND created_at::date = $2::date"
+            : "SELECT COUNT(*) AS count FROM sale_edit_history WHERE shop_id = ? AND date(created_at) = ?",
+          shop.id, reportDate
+        );
+        const sellerActivity = await db.all(
+          isPostgres
+            ? `SELECT u.name, COUNT(s.id) AS count, COALESCE(SUM(s.total_amount), 0) AS total FROM sales s JOIN users u ON u.id = s.user_id WHERE s.shop_id = $1::int AND COALESCE(s.status, 'active') != 'cancelled' AND s.created_at::date = $2::date GROUP BY u.name ORDER BY total DESC`
+            : `SELECT u.name, COUNT(s.id) AS count, COALESCE(SUM(s.total_amount), 0) AS total FROM sales s JOIN users u ON u.id = s.user_id WHERE s.shop_id = ? AND COALESCE(s.status, 'active') != 'cancelled' AND date(s.created_at) = ? GROUP BY u.name ORDER BY total DESC`,
+          shop.id, reportDate
+        );
+
+        const dateLabel = new Date(`${reportDate}T12:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'Africa/Dakar', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const currency = shop.currency || 'FCFA';
+        const money = (amount: unknown) => `${Number(amount || 0).toLocaleString('fr-FR')} ${currency}`;
+        const categoryLines = expenseCategories.length
+          ? expenseCategories.map((entry: any) => `  - ${entry.category}: ${money(entry.total)}`).join('\n')
+          : '  - Aucune dépense';
+        const activityLines = sellerActivity.length
+          ? sellerActivity.map((entry: any) => `  - ${entry.name}: ${Number(entry.count)} vente(s), ${money(entry.total)}`).join('\n')
+          : '  - Aucune vente';
+        const netResult = Number(sales.profit || 0) - Number(expenses.total || 0);
+        const subject = `Récapitulatif du ${dateLabel} — ${shop.name}`;
+        const report = [
+          `Bonjour,`,
+          ``,
+          `Voici le récapitulatif de la journée du ${dateLabel} pour ${shop.name}.`,
+          ``,
+          `VENTES`,
+          `- ${Number(sales.count)} vente(s) validée(s) : ${money(sales.total)}`,
+          `- Bénéfice brut estimé : ${money(sales.profit)}`,
+          ``,
+          `DÉPENSES`,
+          `- ${Number(expenses.count)} dépense(s) : ${money(expenses.total)}`,
+          categoryLines,
+          ``,
+          `AUTRES ACTIVITÉS`,
+          `- Paiements de dettes reçus : ${Number(payments.count)} (${money(payments.total)})`,
+          `- Ventes annulées : ${Number(cancelled.count)} (${money(cancelled.total)} de ventes annulées)`,
+          `- Ventes corrigées : ${Number(corrections.count)}`,
+          ``,
+          `ACTIVITÉ PAR VENDEUR`,
+          activityLines,
+          ``,
+          `Résultat indicatif (bénéfice brut - dépenses) : ${money(netResult)}`,
+          ``,
+          `Cet email est généré automatiquement par MaCaisse.`
+        ].join('\n');
+
+        for (const recipient of recipients) {
+          try {
+            const alreadySent = await db.get(
+              isPostgres
+                ? "SELECT id FROM daily_summary_emails WHERE shop_id = $1::int AND user_id = $2::int AND report_date = $3::date"
+                : "SELECT id FROM daily_summary_emails WHERE shop_id = ? AND user_id = ? AND report_date = ?",
+              shop.id, recipient.id, reportDate
+            );
+            if (alreadySent) continue;
+            await sendEmail(recipient.email, subject, `Bonjour ${recipient.name || ''},\n\n${report}`);
+            await db.run(
+              isPostgres
+                ? "INSERT INTO daily_summary_emails (shop_id, user_id, report_date) VALUES ($1::int, $2::int, $3::date) ON CONFLICT (shop_id, user_id, report_date) DO NOTHING"
+                : "INSERT OR IGNORE INTO daily_summary_emails (shop_id, user_id, report_date) VALUES (?, ?, ?)",
+              shop.id, recipient.id, reportDate
+            );
+            emailsSent++;
+          } catch (emailError) {
+            failures++;
+            console.error(`[Daily summary] Failed for shop ${shop.id}, user ${recipient.id}:`, emailError instanceof Error ? emailError.message : 'unknown error');
+          }
+        }
+      }
+
+      if (failures) return res.status(500).json({ success: false, emailsSent, failures });
+      return res.json({ success: true, reportDate, emailsSent });
+    } catch (error: any) {
+      console.error("[Daily summary] Job failed:", error?.message || error);
+      return res.status(500).json({ error: "Impossible de générer les récapitulatifs quotidiens." });
+    }
+  });
 
   // Subscription Automation Task
   const runSubscriptionAutomation = async () => {
@@ -3157,9 +3576,6 @@ const authenticate = async (req: any, res: any, next: any) => {
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
       console.log(`Database mode: ${isPostgres ? 'PostgreSQL' : 'SQLite'}`);
-      if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-        console.warn("⚠️ WARNING: JWT_SECRET is missing. Using default secret. Set it in Settings for security.");
-      }
     });
   }
 }
@@ -3178,3 +3594,9 @@ startServerSetup().catch(err => console.error("Startup error:", err));
 
 console.log("[Server] Module loaded and ready.");
 export default app;
+
+
+
+
+
+

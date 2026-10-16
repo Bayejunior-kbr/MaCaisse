@@ -4,6 +4,7 @@ import {
   Plus, 
   Search, 
   Trash2, 
+  Pencil,
   Filter,
   Calendar,
   Tag,
@@ -37,6 +38,7 @@ export default function Expenses() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
@@ -68,7 +70,7 @@ export default function Expenses() {
     }
   };
 
-  const handleAddExpense = async (e: React.FormEvent) => {
+  const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = parseFloat(newExpense.amount.replace(',', '.'));
     if (isNaN(amountNum)) {
@@ -77,8 +79,8 @@ export default function Expenses() {
     }
 
     try {
-      const res = await secureFetch('/api/expenses', {
-        method: 'POST',
+      const res = await secureFetch(editingExpenseId ? `/api/expenses/${editingExpenseId}` : '/api/expenses', {
+        method: editingExpenseId ? 'PUT' : 'POST',
         body: JSON.stringify({
           ...newExpense,
           amount: amountNum
@@ -86,6 +88,7 @@ export default function Expenses() {
       });
       if (res.ok) {
         setShowAddModal(false);
+        setEditingExpenseId(null);
         setNewExpense({
           title: '',
           amount: '',
@@ -96,11 +99,29 @@ export default function Expenses() {
         fetchExpenses();
       } else {
         const data = await res.json();
-        alert(data.error || 'Erreur lors de l\'ajout de la dépense');
+        alert(data.error || 'Erreur lors de l\'enregistrement de la dépense');
       }
     } catch (error) {
       alert('Erreur de connexion au serveur');
     }
+  };
+
+  const openExpenseEditor = (expense: Expense) => {
+    setEditingExpenseId(expense.id);
+    setNewExpense({
+      title: expense.title,
+      amount: String(expense.amount),
+      category: expense.category,
+      description: expense.description || '',
+      date: format(new Date(expense.date), 'yyyy-MM-dd')
+    });
+    setShowAddModal(true);
+  };
+
+  const openExpenseCreator = () => {
+    setEditingExpenseId(null);
+    setNewExpense({ title: '', amount: '', category: 'Autre', description: '', date: format(new Date(), 'yyyy-MM-dd') });
+    setShowAddModal(true);
   };
 
   const handleDeleteExpense = async (id: number) => {
@@ -158,7 +179,7 @@ export default function Expenses() {
           <p className="text-slate-500">Suivez vos charges fixes et variables pour un profit net réel.</p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={openExpenseCreator}
           className="flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
         >
           <Plus size={20} />
@@ -265,6 +286,14 @@ export default function Expenses() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
+                        onClick={() => openExpenseEditor(expense)}
+                        aria-label="Modifier la dépense"
+                        title="Modifier"
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                      <button
                         onClick={() => setConfirmDeleteId(expense.id)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                       >
@@ -305,12 +334,18 @@ export default function Expenses() {
                 )}
                 <div className="flex justify-between items-center pt-2">
                   <p className="text-[10px] text-slate-400">Par: {expense.userName}</p>
-                  <button
-                    onClick={() => setConfirmDeleteId(expense.id)}
-                    className="p-2 text-red-600 bg-red-50 rounded-xl transition-all"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openExpenseEditor(expense)} aria-label="Modifier la dépense" className="p-2 text-blue-600 bg-blue-50 rounded-xl transition-all">
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteId(expense.id)}
+                      aria-label="Supprimer la dépense"
+                      className="p-2 text-red-600 bg-red-50 rounded-xl transition-all"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -328,12 +363,12 @@ export default function Expenses() {
               className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl"
             >
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900">Nouvelle Dépense</h2>
-                <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+                <h2 className="text-xl font-bold text-slate-900">{editingExpenseId ? 'Modifier la dépense' : 'Nouvelle Dépense'}</h2>
+                <button onClick={() => { setShowAddModal(false); setEditingExpenseId(null); }} className="text-slate-400 hover:text-slate-600">
                   <Plus className="rotate-45" />
                 </button>
               </div>
-              <form onSubmit={handleAddExpense} className="p-6 space-y-4">
+              <form onSubmit={handleSaveExpense} className="p-6 space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Titre</label>
                   <input
@@ -391,7 +426,7 @@ export default function Expenses() {
                   type="submit"
                   className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 mt-4"
                 >
-                  Enregistrer la dépense
+                  {editingExpenseId ? 'Enregistrer les modifications' : 'Enregistrer la dépense'}
                 </button>
               </form>
             </motion.div>

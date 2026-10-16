@@ -23,7 +23,8 @@ import {
   ShieldCheck,
   Zap,
   Barcode as BarcodeIcon,
-  AlertCircle
+  AlertCircle,
+  Activity as ActivityIcon
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import Dashboard from './pages/Dashboard';
@@ -31,6 +32,7 @@ import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import POS from './pages/POS';
 import SalesHistory from './pages/SalesHistory';
+import ActivityLog from './pages/ActivityLog';
 import Expenses from './pages/Expenses';
 import DailyClosing from './pages/DailyClosing';
 import AIInsights from './pages/AIInsights';
@@ -39,7 +41,7 @@ import UsersPage from './pages/Users';
 import Subscription from './pages/Subscription';
 import AdminDashboard from './pages/AdminDashboard';
 import Settings from './pages/Settings';
-import Landing from './pages/Landing';
+import Landing, { LegalPage } from './pages/Landing';
 import BarcodeGenerator from './pages/BarcodeGenerator';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -56,15 +58,16 @@ import { auth } from './firebase';
 
 import { SubscriptionTimer } from './components/SubscriptionTimer';
 
+const MotionLink = motion(Link);
+
 const SidebarItem = ({ to, icon: Icon, label, active, premiumOnly, userPlan, adminOnly, ownerOnly, userRole, badgeCount, isSubItem }: { to: string, icon: any, label: string, active: boolean, premiumOnly?: boolean, userPlan?: string, adminOnly?: boolean, ownerOnly?: boolean, userRole?: string, badgeCount?: number, isSubItem?: boolean }) => {
   if (adminOnly && userRole !== 'admin') return null;
   if (ownerOnly && userRole !== 'owner' && userRole !== 'admin') return null;
   
   return (
-    <Link
-      to={to}
+    <MotionLink to={to} whileHover={{ x: 3 }} whileTap={{ scale: 0.985 }} transition={{ type: "spring", stiffness: 420, damping: 30 }}
       className={cn(
-        "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 relative",
+        "flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-300 ease-out relative",
         active 
           ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200" 
           : "text-slate-600 hover:bg-slate-100 hover:text-emerald-600",
@@ -81,24 +84,25 @@ const SidebarItem = ({ to, icon: Icon, label, active, premiumOnly, userPlan, adm
           {badgeCount}
         </span>
       )}
-    </Link>
+    </MotionLink>
   );
 };
 
 const SidebarGroup = ({ label, icon: Icon, children, active }: { label: string, icon: any, children: React.ReactNode, active?: boolean }) => {
   const [isOpen, setIsOpen] = useState(active || false);
 
-  // Update isOpen when active prop changes (e.g. navigation)
   useEffect(() => {
     if (active) setIsOpen(true);
   }, [active]);
 
   return (
     <div className="space-y-1">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen(open => !open)}
         className={cn(
-          "w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-slate-600 hover:bg-slate-100",
+          "w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors duration-300 ease-out text-slate-600 hover:bg-slate-100",
           isOpen && "text-emerald-600"
         )}
       >
@@ -106,17 +110,29 @@ const SidebarGroup = ({ label, icon: Icon, children, active }: { label: string, 
           <Icon size={20} />
           <span className="font-semibold">{label}</span>
         </div>
-        <ChevronDown size={16} className={cn("transition-transform duration-200", isOpen ? "rotate-180" : "")} />
+        <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.24, ease: 'easeInOut' }}>
+          <ChevronDown size={16} />
+        </motion.div>
       </button>
-      {isOpen && (
-        <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-100 ml-6">
-          {children}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            key="sidebar-group-content"
+            initial={{ height: 0, opacity: 0, y: -5 }}
+            animate={{ height: 'auto', opacity: 1, y: 0 }}
+            exit={{ height: 0, opacity: 0, y: -4 }}
+            transition={{ duration: 0.24, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="pl-4 space-y-1 mt-1 border-l-2 border-slate-100 ml-6">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
-
 const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { user: User, location: any, pendingRequestsCount: number, onLogout: () => void }) => {
   const { t } = useTranslation(user.language as Language || 'fr');
   return (
@@ -200,7 +216,7 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
           />
         </SidebarGroup>
 
-        <SidebarGroup label="Analyses" icon={BrainCircuit} active={["/ai", "/barcode-generator"].includes(location.pathname)}>
+<SidebarGroup label="Analyses" icon={BrainCircuit} active={["/ai", "/barcode-generator"].includes(location.pathname)}>
           <SidebarItem 
             to="/ai" 
             icon={BrainCircuit} 
@@ -235,6 +251,14 @@ const SidebarContent = ({ user, location, pendingRequestsCount, onLogout }: { us
             isSubItem
           />
         </SidebarGroup>
+        <SidebarItem
+          to="/activity"
+          icon={ActivityIcon}
+          label="Journal d’activité"
+          active={location.pathname === "/activity"}
+          ownerOnly
+          userRole={user.role}
+        />
       </nav>
 
       <div className="mt-auto pt-6 border-t border-slate-100 shrink-0">
@@ -335,6 +359,7 @@ const Layout = ({ children, user, onLogout }: { children: React.ReactNode, user:
     { to: "/closing", icon: ClipboardCheck, label: "Clôture de Caisse" },
     { to: "/customers", icon: Users, label: "Clients", premiumOnly: true },
     { to: "/users", icon: UserPlus, label: "Utilisateurs", ownerOnly: true },
+{ to: "/activity", icon: ActivityIcon, label: "Activité", ownerOnly: true },
     { to: "/ai", icon: BrainCircuit, label: "IA Insights", premiumOnly: true },
     { to: "/settings", icon: SettingsIcon, label: "Paramètres" },
     { to: "/subscription", icon: Zap, label: "Abonnement" },
@@ -738,6 +763,9 @@ export default function App() {
         <Route path="/register" element={user ? <Navigate to="/" /> : <Register onLogin={handleLogin} />} />
         <Route path="/forgot-password" element={user ? <Navigate to="/" /> : <ForgotPassword />} />
         <Route path="/reset-password" element={user ? <Navigate to="/" /> : <ResetPassword />} />
+        <Route path="/conditions-utilisation" element={<LegalPage kind="terms" />} />
+        <Route path="/confidentialite" element={<LegalPage kind="privacy" />} />
+        <Route path="/mentions-legales" element={<LegalPage kind="notice" />} />
 
         <Route path="/inventory" element={
           user ? (
@@ -795,6 +823,14 @@ export default function App() {
           ) : <Navigate to="/login" />
         } />
 
+        <Route path="/activity" element={
+          user && (user.role === 'owner' || user.role === 'admin') ? (
+            <Layout user={user} onLogout={handleLogout}>
+              <ActivityLog />
+            </Layout>
+          ) : <Navigate to="/" />
+        } />
+
         <Route path="/users" element={
           user && (user.role === 'owner' || user.role === 'admin') ? (
             <Layout user={user} onLogout={handleLogout}>
@@ -849,5 +885,16 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
 
 

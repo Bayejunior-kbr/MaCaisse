@@ -9,13 +9,19 @@ import {
   Clock,
   X,
   Printer,
-  FileText
+  FileText,
+  RotateCcw,
+  Plus,
+  Trash2,
+  Pencil
 } from 'lucide-react';
-import { Sale, User } from '../types';
+import { Product, Sale, User } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { secureFetch } from '../lib/api';
 import * as XLSX from 'xlsx';
 import { useTranslation } from '../lib/translations';
+
+type EditableSaleItem = { product_id: number; quantity: number; unit_price: number };
 
 const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 
@@ -29,6 +35,15 @@ export default function SalesHistory() {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
+  const [cancellingSale, setCancellingSale] = useState(false);
+  const [editingSale, setEditingSale] = useState(false);
+  const [savingSaleEdit, setSavingSaleEdit] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
+  const [editedItems, setEditedItems] = useState<EditableSaleItem[]>([]);
+  const [editTax, setEditTax] = useState(0);
+  const [editDiscount, setEditDiscount] = useState(0);
+  const [editReason, setEditReason] = useState('');
+  const [adjustmentSettled, setAdjustmentSettled] = useState(false);
   const receiptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,9 +64,9 @@ export default function SalesHistory() {
     }
     const rows = filteredSales.map(sale => {
       const date = new Date(sale.created_at);
-      return `<tr><td>#SALE-${String(sale.id).padStart(5, '0')}</td><td>${escapeHtml(date.toLocaleString())}</td><td>${escapeHtml(sale.userName || '')}</td><td>${escapeHtml(sale.customerName || t('guest_customer'))}</td><td>${escapeHtml(sale.payment_method || '')}</td><td class="amount">${escapeHtml(formatCurrency(sale.total_amount, sale.currency))}</td></tr>`;
+      return `<tr><td>#SALE-${String(sale.id).padStart(5, '0')}</td><td>${escapeHtml(date.toLocaleString())}</td><td>${escapeHtml(sale.userName || '')}</td><td>${escapeHtml(sale.customerName || t('guest_customer'))}</td><td>${escapeHtml(sale.payment_method || '')}${sale.status === 'cancelled' ? ' · ANNULÉE' : sale.editCount ? ' · MODIFIÉE' : ''}</td><td class="amount">${escapeHtml(formatCurrency(sale.total_amount, sale.currency))}</td></tr>`;
     }).join('');
-    const total = filteredSales.reduce((sum, sale) => sum + Number(sale.total_amount || 0), 0);
+    const total = filteredSales.reduce((sum, sale) => sum + (sale.status === 'cancelled' ? 0 : Number(sale.total_amount || 0)), 0);
     printWindow.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport des ventes - MaCaisse</title><style>
       body{font:14px Arial,sans-serif;color:#172b4d;margin:32px}h1{color:#044598;margin-bottom:4px}.meta{color:#64748b;margin-bottom:24px}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:left}th{background:#eff6ff;color:#044598}.amount{text-align:right;white-space:nowrap}.total{text-align:right;font-size:18px;font-weight:bold;margin-top:20px}@media print{body{margin:12mm}}
       </style></head><body><h1>Rapport des ventes</h1><div class="meta">MaCaisse · ${new Date().toLocaleString()} · ${filteredSales.length} vente(s)</div><table><thead><tr><th>Référence</th><th>Date</th><th>Vendeur</th><th>Client</th><th>Paiement</th><th class="amount">Total</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Aucune vente pour ces filtres.</td></tr>'}</tbody></table><div class="total">Total : ${escapeHtml(formatCurrency(total, user?.currency))}</div><script>window.onload=()=>setTimeout(()=>window.print(),250)</script></body></html>`);
@@ -67,6 +82,7 @@ export default function SalesHistory() {
       [t('customer')]: s.customerName || t('guest_customer'),
       [t('payment_method')]: s.payment_method === 'cash' ? t('cash') : t('mobile_money'),
       [t('total_amount')]: s.total_amount,
+      Statut: s.status === 'cancelled' ? 'Annulée' : s.editCount ? 'Modifiée' : 'Validée',
       ...(user?.role === 'owner' || user?.role === 'admin' ? { [t('total_profit')]: s.total_profit } : {}),
       [t('tax')]: s.tax_amount,
       [t('discount')]: s.discount_amount
@@ -92,6 +108,79 @@ export default function SalesHistory() {
       setShowModal(false);
     } finally {
       setModalLoading(false);
+    }
+  };
+
+  const handleCancelSale = async () => {
+    if (!selectedSale || selectedSale.status === 'cancelled') return;
+    const recordedPaid = Number(selectedSale.amount_paid || 0);
+    if (selectedSale.payment_status !== 'paid' || (recordedPaid > 0 && recordedPaid < Number(selectedSale.total_amount || 0))) {
+      alert('Cette vente est impayée ou partiellement payée. Réglez d’abord la dette avant de l’annuler.');
+      return;
+    }
+    const reason = window.prompt('Motif du retour ou de l’annulation :');
+    if (!reason?.trim()) return;
+    if (!window.confirm(`Confirmer l’annulation complète de la vente #${selectedSale.id} ? Le stock sera remis en inventaire et la vente retirée des totaux. Le remboursement doit être remis au client séparément.`)) return;
+
+    setCancellingSale(true);
+    try {
+      const res = await secureFetch(`/api/sales/${selectedSale.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Impossible d’annuler cette vente.');
+      await fetchSales();
+      await handleViewDetails(selectedSale.id);
+    } catch (error: any) {
+      alert(error?.message || 'Erreur de connexion au serveur.');
+    } finally {
+      setCancellingSale(false);
+    }
+  };
+
+  const beginSaleEdit = async () => {
+    if (!selectedSale || selectedSale.status === 'cancelled' || selectedSale.payment_status !== 'paid') return;
+    try {
+      const res = await secureFetch('/api/products');
+      if (!res.ok) throw new Error('Impossible de charger les produits.');
+      const products: Product[] = await res.json();
+      setAvailableProducts(products);
+      setEditedItems((selectedSale.items || []).map(item => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })));
+      setEditTax(Number(selectedSale.tax_amount || 0));
+      setEditDiscount(Number(selectedSale.discount_amount || 0));
+      setEditReason('');
+      setAdjustmentSettled(false);
+      setEditingSale(true);
+    } catch (error: any) {
+      alert(error?.message || 'Erreur de connexion au serveur.');
+    }
+  };
+
+  const saveSaleEdit = async () => {
+    if (!selectedSale || !editingSale || !editReason.trim() || !editedItems.length) return;
+    const previousTotal = Number(selectedSale.total_amount || 0);
+    const newTotal = editedItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0) + editTax - editDiscount;
+    const difference = newTotal - previousTotal;
+    if (Math.abs(difference) > 0.01 && !adjustmentSettled) {
+      alert('Confirme que la différence a été encaissée ou rendue avant d’enregistrer.');
+      return;
+    }
+    setSavingSaleEdit(true);
+    try {
+      const res = await secureFetch(`/api/sales/${selectedSale.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ items: editedItems, tax_amount: editTax, discount_amount: editDiscount, reason: editReason.trim(), adjustmentSettled })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Impossible de corriger la vente.');
+      setEditingSale(false);
+      await fetchSales();
+      await handleViewDetails(selectedSale.id);
+    } catch (error: any) {
+      alert(error?.message || 'Erreur de connexion au serveur.');
+    } finally {
+      setSavingSaleEdit(false);
     }
   };
 
@@ -326,11 +415,14 @@ export default function SalesHistory() {
       s.customerName?.toLowerCase().includes(query) ||
       String(s.id).includes(query) ||
       s.payment_method?.toLowerCase().includes(query) ||
-      s.payment_status?.toLowerCase().includes(query);
+      s.payment_status?.toLowerCase().includes(query) ||
+      s.status?.toLowerCase().includes(query);
     const date = new Date(s.created_at);
     const localDate = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
     return matchesQuery && (!selectedDate || localDate === selectedDate);
   });
+  const editedSaleTotal = editedItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0) + editTax - editDiscount;
+  const saleEditDifference = editedSaleTotal - Number(selectedSale?.total_amount || 0);
 
   return (
     <div className="space-y-6">
@@ -401,6 +493,7 @@ export default function SalesHistory() {
                 <tr key={sale.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-4">
                     <span className="font-mono text-xs font-bold text-slate-400">#SALE-{sale.id.toString().padStart(5, '0')}</span>
+                    {Number(sale.editCount || 0) > 0 && <span className="ml-2 rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase text-blue-700">Modifiée</span>}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 text-slate-600">
@@ -433,6 +526,7 @@ export default function SalesHistory() {
                   </td>
                   <td className="px-6 py-4 font-bold text-slate-800">
                     {formatCurrency(sale.total_amount, user?.currency)}
+                    {sale.status === 'cancelled' && <span className="block mt-1 text-[10px] font-bold uppercase text-red-600">Annulée</span>}
                   </td>
                   <td className="px-6 py-4 text-right flex items-center justify-end gap-1">
                     <button 
@@ -460,6 +554,7 @@ export default function SalesHistory() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-mono text-[10px] font-bold text-slate-400">#SALE-{sale.id.toString().padStart(5, '0')}</span>
+                  {Number(sale.editCount || 0) > 0 && <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[8px] font-bold uppercase text-blue-700">Modifiée</span>}
                   <span className={cn(
                     "text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter",
                     sale.payment_method === 'cash' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
@@ -468,6 +563,7 @@ export default function SalesHistory() {
                   </span>
                 </div>
                 <div className="font-bold text-slate-800 text-sm truncate">{sale.userName}</div>
+                {sale.status === 'cancelled' && <div className="mt-1 text-[9px] font-bold uppercase text-red-600">Annulée</div>}
                 <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
                   <Clock size={10} />
                   {new Date(sale.created_at).toLocaleString(localStorage.getItem('language') === 'fr' ? 'fr-FR' : 'en-US')}
@@ -529,8 +625,72 @@ export default function SalesHistory() {
                     </div>
                   </div>
 
+                  {selectedSale.status === 'cancelled' && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                      <p className="font-bold">Vente annulée le {selectedSale.cancelled_at ? new Date(selectedSale.cancelled_at).toLocaleString() : '—'}</p>
+                      {selectedSale.cancellation_reason && <p className="mt-1">Motif : {selectedSale.cancellation_reason}</p>}
+                    </div>
+                  )}
+
+                  {editingSale && (
+                    <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="font-bold text-slate-800">Corriger les articles de la vente</h4>
+                          <p className="text-xs text-slate-600 mt-1">Le stock et le bénéfice seront recalculés automatiquement.</p>
+                        </div>
+                        <button type="button" onClick={() => setEditingSale(false)} className="text-sm font-semibold text-slate-500 hover:text-slate-800">Annuler</button>
+                      </div>
+                      <div className="space-y-2">
+                        {editedItems.map((item, index) => (
+                          <div key={`${index}-${item.product_id}`} className="grid grid-cols-12 gap-2 items-center">
+                            <select
+                              aria-label="Produit"
+                              className="col-span-6 min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
+                              value={item.product_id}
+                              onChange={event => {
+                                const product = availableProducts.find(p => p.id === Number(event.target.value));
+                                setEditedItems(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, product_id: Number(event.target.value), unit_price: Number(product?.sale_price || 0) } : line));
+                              }}
+                            >
+                              {availableProducts.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+                            </select>
+                            <input aria-label="Quantité" type="number" min="1" step="1" className="col-span-2 min-w-0 rounded-lg border border-slate-200 px-2 py-2 text-sm" value={item.quantity} onChange={event => setEditedItems(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: Number(event.target.value) } : line))} />
+                            <input aria-label="Prix unitaire" type="number" min="0" step="1" className="col-span-3 min-w-0 rounded-lg border border-slate-200 px-2 py-2 text-sm" value={item.unit_price} onChange={event => setEditedItems(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, unit_price: Number(event.target.value) } : line))} />
+                            <button type="button" aria-label="Retirer cet article" onClick={() => setEditedItems(current => current.filter((_, lineIndex) => lineIndex !== index))} className="col-span-1 p-2 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={16} /></button>
+                          </div>
+                        ))}
+                      </div>
+                      <button type="button" disabled={!availableProducts.length} onClick={() => setEditedItems(current => [...current, { product_id: availableProducts[0].id, quantity: 1, unit_price: Number(availableProducts[0].sale_price || 0) }])} className="inline-flex items-center gap-1 text-sm font-bold text-blue-700 disabled:opacity-50"><Plus size={16} /> Ajouter un produit</button>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="text-xs font-semibold text-slate-600">Taxe
+                          <input type="number" min="0" step="1" value={editTax} onChange={event => setEditTax(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                        </label>
+                        <label className="text-xs font-semibold text-slate-600">Remise
+                          <input type="number" min="0" step="1" value={editDiscount} onChange={event => setEditDiscount(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                        </label>
+                      </div>
+                      <label className="block text-xs font-semibold text-slate-600">Motif de la correction
+                        <textarea required value={editReason} onChange={event => setEditReason(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" rows={2} placeholder="Ex. quantité saisie par erreur" />
+                      </label>
+                      <div className="flex items-center justify-between border-t border-blue-200 pt-3 text-sm">
+                        <span className="font-semibold text-slate-600">Nouveau total</span>
+                        <strong className="text-lg text-slate-900">{formatCurrency(editedSaleTotal, selectedSale.currency)}</strong>
+                      </div>
+                      {Math.abs(saleEditDifference) > 0.01 && (
+                        <label className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+                          <input type="checkbox" checked={adjustmentSettled} onChange={event => setAdjustmentSettled(event.target.checked)} className="mt-0.5" />
+                          <span>J’ai {saleEditDifference > 0 ? 'encaissé' : 'rendu'} la différence de {formatCurrency(Math.abs(saleEditDifference), selectedSale.currency)} auprès du client.</span>
+                        </label>
+                      )}
+                      <button type="button" disabled={savingSaleEdit || !editReason.trim() || editedItems.length === 0 || (Math.abs(saleEditDifference) > 0.01 && !adjustmentSettled)} onClick={saveSaleEdit} className="w-full rounded-xl bg-blue-700 px-4 py-3 font-bold text-white hover:bg-blue-800 disabled:opacity-50">
+                        {savingSaleEdit ? 'Enregistrement…' : 'Enregistrer la correction'}
+                      </button>
+                    </section>
+                  )}
+
                   <div className="space-y-4">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('items_sold')}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{editingSale ? 'Détail actuellement enregistré' : t('items_sold')}</p>
                     <div className="border border-slate-100 rounded-2xl overflow-hidden">
                       <table className="w-full text-left">
                         <thead className="bg-slate-50">
@@ -566,6 +726,21 @@ export default function SalesHistory() {
                       </table>
                     </div>
                   </div>
+
+                  {!!selectedSale.editHistory?.length && (
+                    <section className="rounded-2xl border border-slate-200 p-4">
+                      <h4 className="font-bold text-slate-700 mb-3">Corrections précédentes</h4>
+                      <div className="space-y-3">
+                        {selectedSale.editHistory.map(edit => (
+                          <div key={edit.id} className="border-t border-slate-100 pt-3 text-xs text-slate-600">
+                            <p className="font-semibold text-slate-800">{new Date(edit.created_at).toLocaleString()} · {edit.userName || 'Utilisateur'}</p>
+                            <p className="mt-1">{edit.reason}</p>
+                            <p className="mt-1">{formatCurrency(edit.previous_total, selectedSale.currency)} → {formatCurrency(edit.updated_total, selectedSale.currency)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
 
                   {/* Hidden Receipt for Printing */}
                   <div className="hidden">
@@ -622,6 +797,27 @@ export default function SalesHistory() {
             </div>
 
             <div className="p-6 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+              {selectedSale && !editingSale && selectedSale.status !== 'cancelled' && selectedSale.payment_status === 'paid' && (user?.role === 'owner' || user?.role === 'admin') && (
+                <button
+                  onClick={beginSaleEdit}
+                  disabled={modalLoading || cancellingSale}
+                  className="mr-auto px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-100 disabled:opacity-50"
+                >
+                  <Pencil size={17} />
+                  Corriger la vente
+                </button>
+              )}
+              {selectedSale && selectedSale.status !== 'cancelled' && (user?.role === 'owner' || user?.role === 'admin') && (
+                <button
+                  onClick={handleCancelSale}
+                  disabled={cancellingSale || modalLoading || selectedSale.payment_status !== 'paid' || (Number(selectedSale.amount_paid || 0) > 0 && Number(selectedSale.amount_paid || 0) < Number(selectedSale.total_amount || 0))}
+                  title="Annuler une vente entièrement payée et remettre son stock en inventaire"
+                  className="mr-auto px-4 py-2 bg-red-50 text-red-700 rounded-xl font-bold flex items-center gap-2 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RotateCcw size={17} />
+                  {cancellingSale ? 'Annulation…' : 'Retour / annulation'}
+                </button>
+              )}
               <button 
                 onClick={() => setShowModal(false)}
                 className="px-6 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition-colors"

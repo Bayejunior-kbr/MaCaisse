@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowLeft, Loader2, CheckCircle2, Store } from 'lucide-react';
+import { Mail, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
 
@@ -41,8 +41,8 @@ export default function ForgotPassword() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 p-8 md:p-10 border border-slate-100">
         <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50 mx-auto mb-6">
-            <Store size={32} strokeWidth={2.5} />
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center shadow-lg shadow-blue-100/70 mx-auto mb-6">
+            <img src="/logo.png" alt="MaCaisse" className="w-12 h-12 object-contain" />
           </div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Réinitialisation</h1>
           <p className="text-slate-500 mt-2 font-medium">Retrouvez l'accès à votre compte</p>

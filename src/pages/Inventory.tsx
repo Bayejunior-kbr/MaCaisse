@@ -34,6 +34,7 @@ export default function Inventory() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'product' | 'category', id: number } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -246,22 +247,21 @@ export default function Inventory() {
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+      const res = await secureFetch(editingCategoryId ? `/api/categories/${editingCategoryId}` : '/api/categories', {
+        method: editingCategoryId ? 'PUT' : 'POST',
         body: JSON.stringify({ name: newCategoryName })
       });
       if (res.ok) {
-        setIsCategoryModalOpen(false);
+        setEditingCategoryId(null);
         setNewCategoryName('');
         fetchData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Impossible d’enregistrer la catégorie.');
       }
     } catch (err) {
       console.error(err);
+      alert('Erreur de connexion au serveur.');
     }
   };
 
@@ -741,8 +741,8 @@ export default function Inventory() {
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
               />
-              <button type="submit" className="bg-emerald-600 text-white p-2 rounded-xl hover:bg-emerald-700">
-                <Plus size={24} />
+              <button type="submit" className="bg-emerald-600 text-white px-3 py-2 rounded-xl hover:bg-emerald-700 flex items-center gap-1" aria-label={editingCategoryId ? 'Enregistrer la catégorie' : 'Ajouter une catégorie'}>
+                {editingCategoryId ? <><span className="text-sm font-semibold">OK</span></> : <Plus size={24} />}
               </button>
             </form>
 
@@ -750,12 +750,24 @@ export default function Inventory() {
               {categories.map(c => (
                 <div key={c.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                   <span className="font-medium text-slate-700">{c.name}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      aria-label={`Modifier ${c.name}`}
+                      title="Modifier la catégorie"
+                      onClick={() => { setEditingCategoryId(c.id); setNewCategoryName(c.name); }}
+                      className="text-slate-400 hover:text-blue-600"
+                    >
+                      <Edit2 size={16} />
+                    </button>
                     <button 
+                      type="button"
                       onClick={() => setConfirmDelete({ type: 'category', id: c.id })}
                       className="text-slate-400 hover:text-red-600"
                     >
                       <Trash2 size={16} />
                     </button>
+                  </div>
                 </div>
               ))}
             </div>

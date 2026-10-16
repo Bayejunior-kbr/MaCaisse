@@ -107,6 +107,19 @@ export interface Sale {
   payment_method: string;
   payment_status?: 'paid' | 'debt' | 'partial';
   amount_paid?: number;
+  status?: 'active' | 'cancelled';
+  editCount?: number;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  editHistory?: Array<{
+    id: number;
+    reason: string;
+    previous_total: number;
+    updated_total: number;
+    amount_difference: number;
+    userName?: string;
+    created_at: string;
+  }>;
   created_at: string;
   userName: string;
   items?: SaleItem[];
