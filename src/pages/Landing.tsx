@@ -8,6 +8,7 @@ import {
   Cloud,
   Menu,
   Package,
+  Play,
   ShieldCheck,
   ShoppingCart,
   Smartphone,
@@ -284,6 +285,7 @@ function CaisseDemo() {
 
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [guideVideoPlaying, setGuideVideoPlaying] = useState(false);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -331,6 +333,9 @@ export default function Landing() {
               <a href="#fonctionnement" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
                 Fonctionnement
               </a>
+              <a href="#guide-video" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
+                Guide vidéo
+              </a>
               <a href="#tarifs" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-brand-50 hover:text-brand-700">
                 Tarifs
               </a>
@@ -363,6 +368,7 @@ export default function Landing() {
               {[
                 ['#avantages', 'Avantages'],
                 ['#fonctionnement', 'Fonctionnement'],
+                ['#guide-video', 'Guide vidéo'],
                 ['#tarifs', 'Tarifs'],
               ].map(([href, label]) => (
                 <a key={href} href={href} onClick={closeMenu} className="block rounded-xl px-3 py-3 font-semibold text-slate-700 hover:bg-brand-50">
@@ -408,8 +414,9 @@ export default function Landing() {
                     Créer ma boutique gratuitement
                     <ArrowRight size={19} />
                   </Link>
-                  <a href="#fonctionnement" className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-4 font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-700">
-                    Découvrir MaCaisse
+                  <a href="#guide-video" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-4 font-bold text-slate-700 transition hover:border-brand-300 hover:text-brand-700">
+                    <Play size={17} fill="currentColor" />
+                    Voir le guide vidéo
                   </a>
                 </div>
 
@@ -538,6 +545,60 @@ export default function Landing() {
                   ))}
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section id="guide-video" className="scroll-mt-24 px-4 py-16 sm:px-6 sm:py-20">
+            <div className="mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14">
+              <Reveal>
+                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-xl shadow-brand-900/10">
+                  <div className="relative aspect-video">
+                    {guideVideoPlaying ? (
+                      <iframe
+                        className="absolute inset-0 h-full w-full"
+                        src="https://www.youtube-nocookie.com/embed/SJQ9IR__kA8?autoplay=1&rel=0"
+                        title="Guide complet de MaCaisse"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setGuideVideoPlaying(true)}
+                        aria-label="Lire le guide vidéo complet de MaCaisse"
+                        className="group absolute inset-0 flex w-full items-center justify-center bg-slate-900 text-white"
+                      >
+                        <img
+                          src="https://img.youtube.com/vi/SJQ9IR__kA8/hqdefault.jpg"
+                          alt=""
+                          loading="lazy"
+                          className="absolute inset-0 h-full w-full object-cover opacity-80 transition duration-500 group-hover:scale-105 group-hover:opacity-65"
+                        />
+                        <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-accent-500 text-slate-950 shadow-lg transition duration-200 group-hover:scale-110 sm:h-20 sm:w-20">
+                          <Play size={30} fill="currentColor" className="ml-1" />
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Reveal>
+
+              <Reveal>
+                <p className="text-sm font-extrabold uppercase tracking-[0.16em] text-brand-600">
+                  Le guide complet
+                </p>
+                <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+                  Découvrez MaCaisse, étape par étape.
+                </h2>
+                <p className="mt-4 leading-relaxed text-slate-600 sm:text-lg">
+                  Regardez la présentation complète pour découvrir l’application et voir comment elle accompagne votre commerce au quotidien.
+                </p>
+                <p className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-500">
+                  <Play size={15} className="text-brand-600" />
+                  La vidéo démarre uniquement quand vous appuyez sur lecture.
+                </p>
+              </Reveal>
             </div>
           </section>
 
